@@ -135,8 +135,7 @@ class ResNet(nn.Module):
 	def _init_weight(self):
 		for m in self.modules():
 			if isinstance(m, nn.Conv2d):
-				n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-				m.weight.data.normal_(0, math.sqrt(2. / n))
+				nn.init.kaiming_normal_(m.weight)
 			elif isinstance(m, SynchronizedBatchNorm2d):
 				m.weight.data.fill_(1)
 				m.bias.data.zero_()

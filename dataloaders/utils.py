@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 
 def create_cityscapes_label_colormap():
@@ -33,6 +34,15 @@ def get_colormap(dataset):
 		return create_cityscapes_label_colormap()
 
 	raise Exception('No colormap for dataset found')
+
+
+def map_segmentations_to_colors(segmentations, dataset):
+    rgb_masks = []
+    for segmentation in segmentations:
+        rgb_mask = map_segmentation_to_colors(segmentation, dataset)
+        rgb_masks.append(rgb_mask)
+    rgb_masks = torch.from_numpy(np.array(rgb_masks).transpose([0, 3, 1, 2]))
+    return rgb_masks
 
 
 def map_segmentation_to_colors(segmentation, dataset):
