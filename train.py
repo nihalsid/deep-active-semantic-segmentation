@@ -30,7 +30,7 @@ class Trainer(object):
 		self.writer = self.summary.create_summary()
 
 		kwargs = {'num_workers': args.workers, 'pin_memory': True}
-		self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, **kwargs)
+		self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
 
 		model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn)
 		train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
@@ -105,6 +105,7 @@ class Trainer(object):
 		self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
 		print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
 		print('Loss: %.3f' % train_loss)
+		print('BestPred: %.3f' % self.best_pred)
 
 		if self.args.no_val:
 			# save checkpoint every epoch
@@ -241,6 +242,8 @@ def main():
 						help='evaluuation interval (default: 1)')
 	parser.add_argument('--no-val', action='store_true', default=False,
 						help='skip validation during training')
+	parser.add_argument('--overfit', action='store_true', default=False,
+						help='overfit to one sample')
 
 	args = parser.parse_args()
 	args.cuda = not args.no_cuda and torch.cuda.is_available()

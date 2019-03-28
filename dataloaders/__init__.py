@@ -3,13 +3,13 @@ from torch.utils.data import DataLoader
 from constants import DATASET_ROOT
 import os
 
-def make_dataloader(dataset, base_size, crop_size, batch_size, **kwargs):
+def make_dataloader(dataset, base_size, crop_size, batch_size, overfit, **kwargs):
 
 	if dataset == 'cityscapes':
 		dataset_path = os.path.join(DATASET_ROOT, dataset)
-		train_set = cityscapes.Cityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='train')
-		val_set = cityscapes.Cityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='val')
-		test_set = cityscapes.Cityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='test')
+		train_set = cityscapes.Cityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='train', overfit=overfit)
+		val_set = cityscapes.Cityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='val', overfit=overfit)
+		test_set = cityscapes.Cityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='test', overfit=overfit)
 		num_classes = train_set.NUM_CLASSES
 		train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, **kwargs)
 		val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, **kwargs)

@@ -20,7 +20,7 @@ class Evaluations:
 	def __init__(self, args):
 		self.args = args
 		kwargs = {'num_workers': args.workers, 'pin_memory': True}
-		self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, **kwargs)
+		self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
 		self.model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn)
 		self.evaluator = Evaluator(self.nclass)
 		
@@ -83,7 +83,7 @@ class Evaluations:
 		Acc_class = self.evaluator.Pixel_Accuracy_Class()
 		mIoU = self.evaluator.Mean_Intersection_over_Union()
 		FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
-		print('Evaluation:')
+		print('\nEvaluation:')
 		print('[numImages: %5d]' % (i * self.args.batch_size + image.data.shape[0]))
 		print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
 		print('Loss: %.3f' % test_loss)
@@ -131,6 +131,8 @@ def main():
 						comma-separated list of integers only (default=0)')
 	parser.add_argument('--resume', type=str, default=None,
 						help='put the path to resuming file if needed')
+	parser.add_argument('--overfit', action='store_true', default=False,
+						help='overfit to one sample')
 	
 	args = parser.parse_args()
 	args.cuda = not args.no_cuda and torch.cuda.is_available()
