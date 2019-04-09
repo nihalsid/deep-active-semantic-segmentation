@@ -30,7 +30,7 @@ def create_cityscapes_label_colormap():
 
 def get_colormap(dataset):
 
-	if dataset == 'cityscapes':
+	if dataset == 'cityscapes' or dataset == 'active_cityscapes':
 		return create_cityscapes_label_colormap()
 
 	raise Exception('No colormap for dataset found')

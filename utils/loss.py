@@ -20,6 +20,23 @@ class SegmentationLosses(object):
 			raise NotImplementedError
 
 
+	def SampleWeightedCrossEntropyLoss(self, logit, target, sample_weights):
+		n, c, h, w = logit.size()
+		criterion = nn.CrossEntropyLoss(weight=self.weight, ignore_index=self.ignore_index, reduction='none')
+
+		if self.cuda:
+			criterion = criterion.cuda()
+			weights = sample_weights.cuda()
+
+		loss = criterion(logit, target.long()).mean(-1).mean(-1)
+
+		loss = torch.mean(torch.mul(loss, weights))
+
+		if self.batch_average:
+			loss /= n
+
+		return loss
+
 	def CrossEntropyLoss(self, logit, target):
 		n, c, h, w = logit.size()
 		criterion = nn.CrossEntropyLoss(weight=self.weight, ignore_index=self.ignore_index, reduction='mean')
@@ -56,9 +73,17 @@ class SegmentationLosses(object):
 		
 
 if __name__ == "__main__":
+	
 	loss = SegmentationLosses(cuda=True)
-	a = torch.rand(1, 3, 7, 7).cuda()
-	b = torch.rand(1, 7, 7).cuda()
+	a = torch.rand(2, 3, 7, 7).cuda()
+	b = torch.rand(2, 7, 7).cuda()
 	print(loss.CrossEntropyLoss(a, b).item())
 	print(loss.FocalLoss(a, b, gamma=0, alpha=None).item())
 	print(loss.FocalLoss(a, b, gamma=2, alpha=0.5).item())
+
+	w = torch.FloatTensor([1, 1]).cuda()
+	print(loss.SampleWeightedCrossEntropyLoss(a, b, w).item())
+	w = torch.FloatTensor([1, 0]).cuda()
+	print(loss.SampleWeightedCrossEntropyLoss(a, b, w).item())
+	w = torch.FloatTensor([0, 1]).cuda()
+	print(loss.SampleWeightedCrossEntropyLoss(a, b, w).item())

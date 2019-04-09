@@ -68,7 +68,7 @@ class ASPP(nn.Module):
 		self.conv1 = nn.Conv2d(1280, 256, 1, bias=False)
 		self.bn1 = batchnorm(256)
 		self.relu = nn.ReLU()
-		self.dropout = nn.Dropout(0.5)
+		self.dropout = nn.Dropout2d(0.5)
 		self._init_weight()
 
 

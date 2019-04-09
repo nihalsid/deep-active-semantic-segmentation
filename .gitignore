@@ -123,5 +123,6 @@ dmypy.json
 .pyre/
 
 .idea/
-datasets/
+datasets/cityscapes/gtFine_trainvaltest
+datasets/cityscapes/leftImg8bit
 runs/
