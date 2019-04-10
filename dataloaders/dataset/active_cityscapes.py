@@ -8,20 +8,26 @@ import glob
 from pathlib import Path
 import random
 import math
+from enum import Enum
+import torch
+
+
+class Mode(Enum):
+	ALL_BATCHES = 0
+	LAST_ADDED_BATCH = 1
 
 
 class ActiveCityscapes(data.Dataset):
 	
 	NUM_CLASSES = 19
 	
-	def __init__(self, path, base_size, crop_size, split, init_set, cuda=True, overfit=False): 
+	def __init__(self, path, base_size, crop_size, split, init_set, overfit=False): 
 		
 		self.path = path
 		self.split = split
 		self.crop_size = crop_size
 		self.base_size = base_size
 		self.overfit = overfit
-		self.cuda = cuda
 
 		self.images_base = os.path.join(self.path, 'leftImg8bit', "train" if self.overfit else self.split)
 		self.labels_base = os.path.join(self.path, 'gtFine_trainvaltest', 'gtFine', "train" if self.overfit else self.split)
@@ -33,7 +39,10 @@ class ActiveCityscapes(data.Dataset):
 		self.class_map = dict(zip(self.valid_classes + self.void_classes, list(range(self.NUM_CLASSES)) + [self.ignore_index] * len(self.void_classes)))
 		
 		self.image_paths = glob.glob(os.path.join(self.images_base, '**', '*.png'), recursive=True)
-		
+		self.current_image_paths = []
+		self.last_added_image_paths = []
+		self.mode = Mode.ALL_BATCHES 
+
 		if overfit:
 			self.image_paths = self.image_paths[:1]
 
@@ -48,19 +57,39 @@ class ActiveCityscapes(data.Dataset):
 		else:
 			self.current_image_paths = self.image_paths
 			self.remaining_image_paths = []
-	
-		self.image_weights = tf.FloatTensor([1.] * len(self.current_image_paths))
+
+		self.last_added_image_paths = self.current_image_paths.copy()
+		self.image_weights = torch.FloatTensor([1.] * len(self.current_image_paths))
+
+
+	def set_mode_all(self):
+		self.mode = Mode.ALL_BATCHES
+
+
+	def set_mode_last(self):
+		self.mode = Mode.LAST_ADDED_BATCH
 
 
 	def __len__(self):
-		return len(self.current_image_paths)
+		if self.mode == Mode.ALL_BATCHES:
+			return len(self.current_image_paths)
+		else:
+			return len(self.last_added_image_paths)
 
 
 	def __getitem__(self, index):
+		
+		img_path = None
+		weight = None
+		
+		if self.mode == Mode.ALL_BATCHES:
+			img_path = self.current_image_paths[index]
+			weight = self.image_weights[index]
+		else:
+			img_path = self.last_added_image_paths[index]
+			weight = torch.FloatTensor(1.)
 
-		img_path = self.current_image_paths[index]
 		lbl_path = os.path.join(self.labels_base, Path(img_path).parts[-2], f'{os.path.basename(img_path)[:-15]}gtFine_labelIds.png')
-		weight = self.image_weights[index]
 
 		image = Image.open(img_path).convert('RGB')
 		target = np.array(Image.open(lbl_path), dtype=np.uint8)
@@ -89,11 +118,6 @@ class ActiveCityscapes(data.Dataset):
 
 		retval['weight'] = weight
 
-		if self.cuda:
-			retval['image'] = retval['image'].cuda()
-			retval['label'] = retval['label'].cuda()
-			retval['weight'] = retval['weight'].cuda()
-
 		return retval
 
 
@@ -102,7 +126,8 @@ class ActiveCityscapes(data.Dataset):
 		num_new_samples = min(batch_size, len(scores))
 		selected_samples = list(zip(*sorted(zip(scores, self.remaining_image_paths), key=lambda x: x[0], reverse=True)))[1][:num_new_samples]
 		self.current_image_paths.extend(selected_samples)
-		self.image_weights.extend([1] * num_new_samples)
+		self.last_added_image_paths = selected_samples
+		self.image_weights = torch.cat((self.image_weights, torch.FloatTensor([1] * num_new_samples)))
 		for x in selected_samples:
 			self.remaining_image_paths.remove(x)
 

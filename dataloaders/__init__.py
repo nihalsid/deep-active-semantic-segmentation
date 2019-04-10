@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from constants import DATASET_ROOT
 import os
 
-def make_dataloader(dataset, base_size, crop_size, batch_size, overfit, cuda, **kwargs):
+def make_dataloader(dataset, base_size, crop_size, batch_size, overfit, **kwargs):
 
 	if dataset == 'cityscapes':
 		dataset_path = os.path.join(DATASET_ROOT, dataset)
@@ -20,9 +20,9 @@ def make_dataloader(dataset, base_size, crop_size, batch_size, overfit, cuda, **
 	if dataset == 'active_cityscapes':
 		dataset_path = os.path.join(DATASET_ROOT, 'cityscapes')
 
-		train_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='train', init_set=kwargs['init_set'], cuda, overfit=overfit)
-		val_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='val', init_set=kwargs['init_set'], cuda, overfit=overfit)
-		test_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='test', init_set=kwargs['init_set'], cuda, overfit=overfit)
+		train_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='train', init_set=kwargs['init_set'], overfit=overfit)
+		val_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='val', init_set=kwargs['init_set'], overfit=overfit)
+		test_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='test', init_set=kwargs['init_set'], overfit=overfit)
 		num_classes = train_set.NUM_CLASSES
 
 		del kwargs['init_set']

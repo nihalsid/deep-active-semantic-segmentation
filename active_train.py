@@ -22,20 +22,23 @@ import sys
 
 class Trainer(object):
 
-	def __init__(self, args, num_current_labeled_samples, dataloaders, overall_summary_writer):
+	def __init__(self, args, dataloaders):
 		self.args = args
+		self.train_loader, self.val_loader, self.test_loader, self.nclass = dataloaders
 
-		self.saver = ActiveSaver(args, num_current_labeled_samples)
+		
+	def setup_saver_and_summary(self, num_current_labeled_samples):
+		
+		self.saver = ActiveSaver(self.args, num_current_labeled_samples)
 		self.saver.save_experiment_config()
-
 		self.summary = TensorboardSummary(self.saver.experiment_dir)
 		self.writer = self.summary.create_summary()
 
-		self.overall_summary_writer = overall_summary_writer
-		self.num_current_labeled_samples = num_current_labeled_samples
 
-		self.train_loader, self.val_loader, self.test_loader, self.nclass = dataloaders
+	def initialize(self):
 
+		args = self.args
+		
 		model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn)
 		train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
 						{'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
@@ -46,7 +49,6 @@ class Trainer(object):
 			dataset_folder = args.dataset
 			if args.dataset == 'active_cityscapes':
 				dataset_folder = 'cityscapes'
-
 			classes_weights_path = os.path.join(constants.DATASET_ROOT, dataset_folder, 'class_weights.npy')
 			if os.path.isfile(classes_weights_path):
 				weight = np.load(classes_weights_path)
@@ -93,7 +95,8 @@ class Trainer(object):
 
 		for i, sample in enumerate(tbar):
 			image, target = sample['image'], sample['label']
-
+			if self.args.cuda:
+				image, target = image.cuda(), target.cuda()
 			self.scheduler(self.optimizer, i, epoch, self.best_pred)
 			self.optimizer.zero_grad()
 			output = self.model(image)
@@ -137,7 +140,10 @@ class Trainer(object):
 
 		for i, sample in enumerate(tbar):
 			image, target = sample['image'], sample['label']
-
+			
+			if self.args.cuda:
+				image, target = image.cuda(), target.cuda()
+			
 			with torch.no_grad():
 				output = self.model(image)
 
@@ -259,6 +265,8 @@ def main():
 						help='initial labeled set')
 	parser.add_argument('--active-batch-size', action='store_true', default=50,
 						help='batch size queried from oracle')
+	parser.add_argument('--active-train-mode', type=str, default='reset_model',
+						help='whether to reset model after each active loop or train only on new data', choices=['reset_model', 'query_only', 'mix'])
 
 	args = parser.parse_args()
 	args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -308,7 +316,7 @@ def main():
 	torch.manual_seed(args.seed)
 	
 	kwargs = {'num_workers': args.workers, 'pin_memory': True, 'init_set': args.seed_set}
-	dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, args.cuda, **kwargs)
+	dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
 	training_set = dataloaders[0]
 	dataloaders = dataloaders[1:]
 
@@ -323,19 +331,34 @@ def main():
 
 	print()
 
+	trainer = Trainer(args, dataloaders)
+	trainer.initialize()
+
 	for selection_iter in range(total_active_selection_iterations):
+		
 		print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d} [{len(training_set):04d}/{len(training_set.remaining_image_paths):04d}/{training_set.count_expands_needed(args.active_batch_size):03d}]')
-		trainer = Trainer(args, len(training_set), dataloaders, writer)
+		
+		trainer.setup_saver_and_summary(len(training_set))
+		
 		train_loss = math.inf
 
 		for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
+			
+			if args.active_train_mode == 'reset_model':
+				trainer.initialize()
+				training_set.set_mode_all()
+			elif args.active_train_mode == 'query_only':
+				training_set.set_mode_last()
+			else: 
+				raise NotImplementedError
+
 			train_loss = trainer.training(epoch)
 			if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
 				trainer.validation(epoch)
 		
 		test_loss, mIoU, Acc, Acc_class, FWIoU = trainer.validation(trainer.args.epochs - 1)
 		
-		writer.add_scalar('train/total_loss', train_loss, len(training_set))
+		writer.add_scalar('train/total_loss', train_loss / len(training_set), len(training_set))
 		writer.add_scalar('val/total_loss', test_loss, len(training_set))
 		writer.add_scalar('val/mIoU', mIoU, len(training_set))
 		writer.add_scalar('val/Acc', Acc, len(training_set))
