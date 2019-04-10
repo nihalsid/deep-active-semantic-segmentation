@@ -14,13 +14,14 @@ class ActiveCityscapes(data.Dataset):
 	
 	NUM_CLASSES = 19
 	
-	def __init__(self, path, base_size, crop_size, split, init_set, overfit=False): 
+	def __init__(self, path, base_size, crop_size, split, init_set, cuda=True, overfit=False): 
 		
 		self.path = path
 		self.split = split
 		self.crop_size = crop_size
 		self.base_size = base_size
 		self.overfit = overfit
+		self.cuda = cuda
 
 		self.images_base = os.path.join(self.path, 'leftImg8bit', "train" if self.overfit else self.split)
 		self.labels_base = os.path.join(self.path, 'gtFine_trainvaltest', 'gtFine', "train" if self.overfit else self.split)
@@ -48,7 +49,7 @@ class ActiveCityscapes(data.Dataset):
 			self.current_image_paths = self.image_paths
 			self.remaining_image_paths = []
 	
-		self.image_weights = [1.] * len(self.current_image_paths)
+		self.image_weights = tf.FloatTensor([1.] * len(self.current_image_paths))
 
 
 	def __len__(self):
@@ -87,6 +88,12 @@ class ActiveCityscapes(data.Dataset):
 			raise Exception('Undefined split - should be either test/train/val')
 
 		retval['weight'] = weight
+
+		if self.cuda:
+			retval['image'] = retval['image'].cuda()
+			retval['label'] = retval['label'].cuda()
+			retval['weight'] = retval['weight'].cuda()
+
 		return retval
 
 

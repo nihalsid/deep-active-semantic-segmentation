@@ -94,9 +94,6 @@ class Trainer(object):
 		for i, sample in enumerate(tbar):
 			image, target = sample['image'], sample['label']
 
-			if self.args.cuda:
-				image, target = image.cuda(), target.cuda()
-
 			self.scheduler(self.optimizer, i, epoch, self.best_pred)
 			self.optimizer.zero_grad()
 			output = self.model(image)
@@ -140,9 +137,6 @@ class Trainer(object):
 
 		for i, sample in enumerate(tbar):
 			image, target = sample['image'], sample['label']
-
-			if self.args.cuda:
-				image, target = image.cuda(), target.cuda()
 
 			with torch.no_grad():
 				output = self.model(image)
@@ -314,7 +308,7 @@ def main():
 	torch.manual_seed(args.seed)
 	
 	kwargs = {'num_workers': args.workers, 'pin_memory': True, 'init_set': args.seed_set}
-	dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
+	dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, args.cuda, **kwargs)
 	training_set = dataloaders[0]
 	dataloaders = dataloaders[1:]
 
