@@ -3,6 +3,7 @@ import os
 import numpy as np
 from tqdm import tqdm
 import math
+import random
 
 from dataloaders import make_dataloader
 from models.sync_batchnorm.replicate import patch_replication_callback
@@ -112,7 +113,6 @@ class Trainer(object):
 					self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
 
 		self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
-		self.overall_summary_writer.add_scalar(f'{self.num_current_labeled_samples:04d}/train_loss_epoch', train_loss, epoch)
 		print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
 		print('Loss: %.3f' % train_loss)
 		print('BestPred: %.3f' % self.best_pred)
@@ -165,15 +165,13 @@ class Trainer(object):
 		self.writer.add_scalar('val/Acc', Acc, epoch)
 		self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
 		self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
-		self.overall_summary_writer.add_scalar(f'{self.num_current_labeled_samples:04d}/test_loss_epoch', test_loss, epoch)
-		self.overall_summary_writer.add_scalar(f'{self.num_current_labeled_samples:04d}/mIoU', mIoU, epoch)
 		print('Validation:')
 		print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
 		print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
 		print('Loss: %.3f' % test_loss)
 		
 		new_pred = mIoU
-
+		is_best = False
 		if new_pred > self.best_pred:
 			is_best = True
 			self.best_pred = new_pred
