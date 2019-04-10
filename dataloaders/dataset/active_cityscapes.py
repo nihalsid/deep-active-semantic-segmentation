@@ -87,7 +87,7 @@ class ActiveCityscapes(data.Dataset):
 			weight = self.image_weights[index]
 		else:
 			img_path = self.last_added_image_paths[index]
-			weight = torch.FloatTensor(1.)
+			weight = torch.FloatTensor([1.])[0]
 
 		lbl_path = os.path.join(self.labels_base, Path(img_path).parts[-2], f'{os.path.basename(img_path)[:-15]}gtFine_labelIds.png')
 
