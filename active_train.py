@@ -71,19 +71,6 @@ class Trainer(object):
 			self.model = self.model.cuda()
 
 		self.best_pred = 0.0
-		if args.resume is not None:
-			if not os.path.isfile(args.resume):
-				raise RuntimeError(f"=> no checkpoint found at {args.resume}")
-			checkpoint = torch.load(args.resume)
-			args.start_epoch = checkpoint['epoch']
-			if args.cuda:
-				self.model.module.load_state_dict(checkpoint['state_dict'])
-			else:
-				self.model.load_state_dict(checkpoint['state_dict'])
-			if not args.ft:
-				self.optimizer.load_state_dict(checkpoint['optimizer'])
-			self.best_pred = checkpoint['best_pred']
-			print(f'=> loaded checkpoint {args.resume} (epoch {checkpoint["epoch"]})')
 
 
 	def training(self, epoch):
@@ -107,10 +94,6 @@ class Trainer(object):
 			tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
 			self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
-			if num_img_tr >= constants.TENSORBOARD_VISUALIZATION_INTERVAL:
-				if i % (num_img_tr // constants.TENSORBOARD_VISUALIZATION_INTERVAL) == 0:
-					global_step = i + num_img_tr * epoch
-					self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
 
 		self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
 		print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
@@ -138,6 +121,11 @@ class Trainer(object):
 		tbar = tqdm(self.val_loader, desc='\r')
 		test_loss = 0.0
 
+		visualization_index = int(random.random() * len(self.val_loader))
+		vis_img = None
+		vis_tgt = None
+		vis_out = None
+
 		for i, sample in enumerate(tbar):
 			image, target = sample['image'], sample['label']
 			
@@ -153,6 +141,12 @@ class Trainer(object):
 			pred = output.data.cpu().numpy()
 			target = target.cpu().numpy()
 			pred = np.argmax(pred, axis=1)
+
+			if i == visualization_index:
+				vis_img = image
+				vis_tgt = target
+				vis_out = output
+
 			self.evaluator.add_batch(target, pred)
 
 		# Fast test during the training
@@ -184,7 +178,7 @@ class Trainer(object):
 			'best_pred': self.best_pred,
 		}, is_best)
 
-		return test_loss, mIoU, Acc, Acc_class, FWIoU
+		return test_loss, mIoU, Acc, Acc_class, FWIoU, [vis_img, vis_tgt, vis_out]
 
 
 def main():
@@ -247,8 +241,8 @@ def main():
 	parser.add_argument('--seed', type=int, default=1, metavar='S',
 						help='random seed (default: 1)')
 	# checking point
-	parser.add_argument('--resume', type=str, default=None,
-						help='put the path to resuming file if needed')
+	parser.add_argument('--resume', type=int, default=0,
+						help='iteration to resume from')
 	parser.add_argument('--checkname', type=str, default=None,
 						help='set the checkpoint name')
 	# finetuning pre-trained models
@@ -320,21 +314,24 @@ def main():
 	training_set = dataloaders[0]
 	dataloaders = dataloaders[1:]
 
-	saver = Saver(args, remove_existing=True)
+	saver = Saver(args, remove_existing=False)
 	saver.save_experiment_config()
 	summary = TensorboardSummary(saver.experiment_dir)
 	writer = summary.create_summary()
 	
 	active_selection_function = lambda x: random.random()
 
-	total_active_selection_iterations = training_set.count_expands_needed(args.active_batch_size)
-
 	print()
 
 	trainer = Trainer(args, dataloaders)
 	trainer.initialize()
 
-	for selection_iter in range(total_active_selection_iterations):
+	for i in range(args.resume):
+		training_set.expand_training_set(active_selection_function, args.active_batch_size)
+
+	total_active_selection_iterations = training_set.count_expands_needed(args.active_batch_size)
+
+	for selection_iter in range(args.resume, total_active_selection_iterations):
 		
 		print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d} [{len(training_set):04d}/{len(training_set.remaining_image_paths):04d}/{training_set.count_expands_needed(args.active_batch_size):03d}]')
 		
@@ -356,15 +353,17 @@ def main():
 			if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
 				trainer.validation(epoch)
 		
-		test_loss, mIoU, Acc, Acc_class, FWIoU = trainer.validation(trainer.args.epochs - 1)
+		test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(trainer.args.epochs - 1)
 		
-		writer.add_scalar('train/total_loss', train_loss / len(training_set), len(training_set))
-		writer.add_scalar('val/total_loss', test_loss, len(training_set))
-		writer.add_scalar('val/mIoU', mIoU, len(training_set))
-		writer.add_scalar('val/Acc', Acc, len(training_set))
-		writer.add_scalar('val/Acc_class', Acc_class, len(training_set))
-		writer.add_scalar('val/fwIoU', FWIoU, len(training_set))
+		writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), args.active_batch_size * (selection_iter + 1))
+		writer.add_scalar('active_loop/val_loss', test_loss, args.active_batch_size * (selection_iter + 1))
+		writer.add_scalar('active_loop/mIoU', mIoU, args.active_batch_size * (selection_iter + 1))
+		writer.add_scalar('active_loop/Acc', Acc, args.active_batch_size * (selection_iter + 1))
+		writer.add_scalar('active_loop/Acc_class', Acc_class, args.active_batch_size * (selection_iter + 1))
+		writer.add_scalar('active_loop/fwIoU', FWIoU, args.active_batch_size * (selection_iter + 1))
 		
+		summary.visualize_image(writer, args.dataset, visualizations[0], visualizations[1], visualizations[2], args.active_batch_size * (selection_iter + 1))
+
 		trainer.writer.close()
 		training_set.expand_training_set(active_selection_function, args.active_batch_size)
 	
