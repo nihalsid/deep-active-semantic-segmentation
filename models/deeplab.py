@@ -9,7 +9,7 @@ from models.backbone import build_backbone
 
 class DeepLab(nn.Module):
 
-	def __init__(self, backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False):
+	def __init__(self, backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False):
 
 		super(DeepLab, self).__init__()
 
@@ -18,9 +18,9 @@ class DeepLab(nn.Module):
 		else:
 			batchnorm = nn.BatchNorm2d
 
-		self.backbone = build_backbone(backbone, output_stride, batchnorm)
+		self.backbone = build_backbone(backbone, output_stride, batchnorm, mc_dropout)
 		self.aspp = ASPP(backbone, output_stride, batchnorm)
-		self.decoder = Decoder(num_classes, backbone, batchnorm)
+		self.decoder = Decoder(num_classes, backbone, batchnorm, mc_dropout)
 
 		if freeze_bn:
 			self.freeze_bn()
@@ -67,7 +67,7 @@ class DeepLab(nn.Module):
 
 
 if __name__ == "__main__":
-	model = DeepLab(backbone='resnet', output_stride=16)
+	model = DeepLab(backbone='mobilenet', output_stride=16, mc_dropout=True)
 	model.eval()
 	input = torch.rand(1, 3, 513, 513)
 	output = model(input)

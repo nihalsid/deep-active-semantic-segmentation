@@ -106,7 +106,7 @@ class ASPP(nn.Module):
 
 if __name__=='__main__':
 
-	aspp = ASPP(backbone='resnet', output_stride=8, batchnorm=nn.BatchNorm2d)
+	aspp = ASPP(backbone='mobilenet', output_stride=8, batchnorm=nn.BatchNorm2d)
 	input = torch.rand(1, 2048, 64, 64)
 	output = aspp(input)
 	print("O/P Size: ", output.size())
