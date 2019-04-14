@@ -59,7 +59,6 @@ class ActiveCityscapes(data.Dataset):
 			self.remaining_image_paths = []
 
 		self.last_added_image_paths = self.current_image_paths.copy()
-		self.image_weights = torch.FloatTensor([1.] * len(self.current_image_paths))
 
 
 	def set_mode_all(self):
@@ -80,14 +79,11 @@ class ActiveCityscapes(data.Dataset):
 	def __getitem__(self, index):
 		
 		img_path = None
-		weight = None
 		
 		if self.mode == Mode.ALL_BATCHES:
 			img_path = self.current_image_paths[index]
-			weight = self.image_weights[index]
 		else:
 			img_path = self.last_added_image_paths[index]
-			weight = torch.FloatTensor([1.])[0]
 
 		lbl_path = os.path.join(self.labels_base, Path(img_path).parts[-2], f'{os.path.basename(img_path)[:-15]}gtFine_labelIds.png')
 
@@ -116,9 +112,16 @@ class ActiveCityscapes(data.Dataset):
 		if retval is None:
 			raise Exception('Undefined split - should be either test/train/val')
 
-		retval['weight'] = weight
-
 		return retval
+
+	def replicate_training_set(self, factor):
+		self.current_image_paths = self.current_image_paths * factor
+		self.last_added_image_paths = self.last_added_image_paths * factor
+		
+
+	def reset_replicated_training_set(self):
+		self.current_image_paths = list(set(self.current_image_paths))
+		self.last_added_image_paths = list(set(self.last_added_image_paths))
 
 
 	def expand_training_set(self, evaluation_function, batch_size):
@@ -127,7 +130,6 @@ class ActiveCityscapes(data.Dataset):
 		selected_samples = list(zip(*sorted(zip(scores, self.remaining_image_paths), key=lambda x: x[0], reverse=True)))[1][:num_new_samples]
 		self.current_image_paths.extend(selected_samples)
 		self.last_added_image_paths = selected_samples
-		self.image_weights = torch.cat((self.image_weights, torch.FloatTensor([1] * num_new_samples)))
 		for x in selected_samples:
 			self.remaining_image_paths.remove(x)
 
@@ -196,7 +198,6 @@ if __name__ == '__main__':
 		for j in range(sample['image'].size()[0]):
 			image = sample['image'].numpy()
 			gt = sample['label'].numpy()
-			weights = sample['weight'].numpy()
 			gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), 'cityscapes')
 			image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
 			plt.figure()
