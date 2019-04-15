@@ -14,16 +14,17 @@ from utils.calculate_weights import calculate_weights_labels
 from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver, ActiveSaver
 from utils.summaries import TensorboardSummary
+from utils.active_selection import ActiveSelectionMCDropout
 from utils.metrics import Evaluator
-from utils import active_selection
 import constants
 import sys
 
 
 class Trainer(object):
 
-	def __init__(self, args, dataloaders):
+	def __init__(self, args, dataloaders, mc_dropout):
 		self.args = args
+		self.mc_dropout = mc_dropout
 		self.train_loader, self.val_loader, self.test_loader, self.nclass = dataloaders
 
 		
@@ -39,7 +40,7 @@ class Trainer(object):
 
 		args = self.args
 		
-		model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn, mc_dropout=args.mc_dropout)
+		model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn, mc_dropout=self.mc_dropout)
 		train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
 						{'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
 		
@@ -262,8 +263,7 @@ def main():
 						help='batch size queried from oracle')
 	parser.add_argument('--active-train-mode', type=str, default='reset_model',
 						help='whether to reset model after each active loop or train only on new data', choices=['reset_model', 'query_only', 'mix'])
-	parser.add_argument('--mc-dropout', type=bool,
-						help='Use dropout across all the model weights')
+	parser.add_argument('--active-selection-mode', type=str, default='random', choices=['random', 'variance'], help='method to select new samples')
 
 	args = parser.parse_args()
 	args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -307,6 +307,8 @@ def main():
 
 	if args.checkname is None:
 		args.checkname = 'deeplab-'+str(args.backbone)
+
+	mc_dropout = args.active_selection_mode == 'variance'
 	
 	print()
 	print(args)
@@ -326,9 +328,11 @@ def main():
 	
 	print()
 
-	trainer = Trainer(args, dataloaders)
+	trainer = Trainer(args, dataloaders, mc_dropout)
 	trainer.initialize()
-	
+			
+	active_selector = ActiveSelectionMCDropout(training_set.NUM_CLASSES, args.crop_size, args.workers, args.cuda)
+
 	total_active_selection_iterations = training_set.count_expands_needed(args.active_batch_size)
 
 	for i in range(args.resume):
@@ -337,7 +341,7 @@ def main():
 	expansion_factor = min(args.eval_interval, args.epochs) if args.active_train_mode == 'query_only' else 1
 	effective_epochs = math.ceil(args.epochs / expansion_factor)
 
-	for selection_iter in range(1):#args.resume, total_active_selection_iterations):
+	for selection_iter in range(args.resume, total_active_selection_iterations):
 		
 		print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d} [{len(training_set):04d}/{len(training_set.remaining_image_paths):04d}/{training_set.count_expands_needed(args.active_batch_size):03d}]')
 		
@@ -346,8 +350,8 @@ def main():
 		train_loss = math.inf
 		
 		if args.active_train_mode == 'query_only':
-			training_set.replicate_training_set(expansion_factor)
 			print(f'\nExpanding training set with {len(training_set)} images to {len(training_set) * expansion_factor} images')
+			training_set.replicate_training_set(expansion_factor)
 
 		if args.active_train_mode == 'reset_model':
 			trainer.initialize()
@@ -377,8 +381,14 @@ def main():
 
 		trainer.writer.close()
 		training_set.reset_replicated_training_set()
-		training_set.expand_training_set(active_selection.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
-	
+
+		if args.active_selection_mode == 'random': 
+			training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
+		elif args.active_selection_mode == 'variance':
+			trainer.model.eval()
+			training_set.expand_training_set(active_selector.get_uncertainity_for_images(trainer.model, training_set.remaining_image_paths))
+		else:
+			raise NotImplementedError
 	writer.close()
 
 if __name__ == "__main__":

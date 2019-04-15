@@ -13,11 +13,6 @@ import matplotlib.pyplot as plt
 from dataloaders.utils import map_segmentation_to_colors
 
 
-def get_random_uncertainity(images):
-	scores = []
-	for i in range(len(images)):
-		scores.append(random.random())
-	return scores
 
 
 class ActiveSelectionMCDropout:
@@ -29,14 +24,22 @@ class ActiveSelectionMCDropout:
 		self.cuda = cuda
 
 
+	def get_random_uncertainity(self, images):
+		scores = []
+		for i in range(len(images)):
+			scores.append(random.random())
+		return scores
+
+
 	def _get_uncertainity_for_image(self, model, image):
 		outputs = np.zeros([constants.MC_STEPS, self.dataset_classes, image.shape[2], image.shape[3]])
 		with torch.no_grad():
 			for step in range(constants.MC_STEPS):
 				outputs[step, :,  :, :] = model(image).cpu().numpy().squeeze()
 
-		prediction = np.argmax(outputs.mean(axis=0), axis=0)
-		self._visualize_variance(image.cpu().numpy().squeeze(), np.sum(np.var(outputs, axis=0), axis=0) / (constants.MC_STEPS * self.dataset_classes), prediction)
+		# visualize for debugging
+		# prediction = np.argmax(outputs.mean(axis=0), axis=0)
+		# self._visualize_variance(image.cpu().numpy().squeeze(), np.sum(np.var(outputs, axis=0), axis=0) / (constants.MC_STEPS * self.dataset_classes), prediction)
 		
 		return np.sum(np.var(outputs, axis=0)) / (constants.MC_STEPS * self.dataset_classes * image.shape[2] * image.shape[3])
 
