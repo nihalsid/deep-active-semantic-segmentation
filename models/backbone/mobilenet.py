@@ -9,16 +9,13 @@ import json
 import os
 
 
-def conv_bn(inplanes, outplanes, stride, batchnorm, mc_dropout):
+def conv_bn(inplanes, outplanes, stride, batchnorm):
 
 	layer_list = [
 		nn.Conv2d(inplanes, outplanes, 3, stride, 1, bias=False),
 		batchnorm(outplanes),
 		nn.ReLU6(inplace=True)
 	]
-
-	if mc_dropout:
-		layer_list.append(nn.Dropout2d(p=constants.MC_DROPOUT_RATE))
 
 	return nn.Sequential(*layer_list)
 
@@ -35,7 +32,7 @@ def fixed_padding(inputs, kernel_size, dilation):
 
 class InvertedResidual(nn.Module):
 
-	def __init__(self, inplanes, outplanes, stride, dilation, expand_ratio, batchnorm, mc_dropout):
+	def __init__(self, inplanes, outplanes, stride, dilation, expand_ratio, batchnorm):
 
 		super(InvertedResidual, self).__init__()
 		self.stride = stride
@@ -47,60 +44,29 @@ class InvertedResidual(nn.Module):
 		self.dilation = dilation
 
 		if expand_ratio == 1:
-			if mc_dropout:
-				self.conv = nn.Sequential(
-					# dw
-					nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 0, dilation, groups=hidden_dim, bias=False),
-					batchnorm(hidden_dim),
-					nn.ReLU6(inplace=True),
-					nn.Dropout2d(p=constants.MC_DROPOUT_RATE),
-					# pw-linear
-					nn.Conv2d(hidden_dim, outplanes, 1, 1, 0, 1, 1, bias=False),
-					batchnorm(outplanes),
-					nn.Dropout2d(p=constants.MC_DROPOUT_RATE)
-				)
-			else:
-				self.conv = nn.Sequential(
-					# dw
-					nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 0, dilation, groups=hidden_dim, bias=False),
-					batchnorm(hidden_dim),
-					nn.ReLU6(inplace=True),
-					# pw-linear
-					nn.Conv2d(hidden_dim, outplanes, 1, 1, 0, 1, 1, bias=False),
-					batchnorm(outplanes)
-				)
+			self.conv = nn.Sequential(
+				# dw
+				nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 0, dilation, groups=hidden_dim, bias=False),
+				batchnorm(hidden_dim),
+				nn.ReLU6(inplace=True),
+				# pw-linear
+				nn.Conv2d(hidden_dim, outplanes, 1, 1, 0, 1, 1, bias=False),
+				batchnorm(outplanes)
+			)
 		else:
-			if mc_dropout:
-				self.conv = nn.Sequential(
-					# dw
-					nn.Conv2d(inplanes, hidden_dim, 1, 1, 0, 1, bias=False),
-					batchnorm(hidden_dim),
-					nn.ReLU6(inplace=True),
-					nn.Dropout2d(p=constants.MC_DROPOUT_RATE),
-					# dw
-					nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 0, dilation, groups=hidden_dim, bias=False),
-					batchnorm(hidden_dim),
-					nn.ReLU6(inplace=True),
-					nn.Dropout2d(p=constants.MC_DROPOUT_RATE),
-					# pw-linear
-					nn.Conv2d(hidden_dim, outplanes, 1, 1, 0, 1, bias=False),
-					batchnorm(outplanes),
-					nn.Dropout2d(p=constants.MC_DROPOUT_RATE)
-				)
-			else:
-				self.conv = nn.Sequential(
-					# dw
-					nn.Conv2d(inplanes, hidden_dim, 1, 1, 0, 1, bias=False),
-					batchnorm(hidden_dim),
-					nn.ReLU6(inplace=True),
-					# dw
-					nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 0, dilation, groups=hidden_dim, bias=False),
-					batchnorm(hidden_dim),
-					nn.ReLU6(inplace=True),
-					# pw-linear
-					nn.Conv2d(hidden_dim, outplanes, 1, 1, 0, 1, bias=False),
-					batchnorm(outplanes)
-				)
+			self.conv = nn.Sequential(
+				# dw
+				nn.Conv2d(inplanes, hidden_dim, 1, 1, 0, 1, bias=False),
+				batchnorm(hidden_dim),
+				nn.ReLU6(inplace=True),
+				# dw
+				nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 0, dilation, groups=hidden_dim, bias=False),
+				batchnorm(hidden_dim),
+				nn.ReLU6(inplace=True),
+				# pw-linear
+				nn.Conv2d(hidden_dim, outplanes, 1, 1, 0, 1, bias=False),
+				batchnorm(outplanes)
+			)
 
 
 	def forward(self, x):
@@ -135,7 +101,7 @@ class MobileNetV2(nn.Module):
 		]
 
 		input_channel = int(input_channel * width_mult)
-		self.features = [conv_bn(3, input_channel, 2, batchnorm, mc_dropout)]
+		self.features = [conv_bn(3, input_channel, 2, batchnorm)]
 		current_stride *= 2
 
 		for t, c, n, s in inverted_residual_setting:
@@ -152,44 +118,44 @@ class MobileNetV2(nn.Module):
 
 			for i in range(n):
 				if i == 0:
-					self.features.append(block(input_channel, output_channel, stride, dilation, t, batchnorm, mc_dropout))
+					self.features.append(block(input_channel, output_channel, stride, dilation, t, batchnorm))
 				else:
-					self.features.append(block(input_channel, output_channel, 1, dilation, t, batchnorm, mc_dropout))
+					self.features.append(block(input_channel, output_channel, 1, dilation, t, batchnorm))
 				input_channel = output_channel
 
+		if mc_dropout:
+			self.features.append(nn.Dropout2d(p=constants.MC_DROPOUT_RATE))
+		
 		self.features = nn.Sequential(*self.features)
 		self._initialize_weights()
-
 		if pretrained:
-			self._load_pretrained_model(mc_dropout)
+			self._load_pretrained_model()
 
 		self.low_level_features = self.features[0:4]
 		self.high_level_features = self.features[4:]
+		self.dropout = nn.Dropout2d(p=constants.MC_DROPOUT_RATE)
+		self.mc_dropout = mc_dropout
 
 
 	def forward(self, x):
 
 		low_level_feat = self.low_level_features(x)
 		x = self.high_level_features(low_level_feat)
+		if self.mc_dropout:
+			low_level_feat = self.dropout(low_level_feat)
 		return x, low_level_feat
 
 
-	def _load_pretrained_model(self, mc_dropout):
+	def _load_pretrained_model(self):
 		
 		pretrain_dict = model_zoo.load_url('http://jeff95.me/models/mobilenet_v2-6a65762b.pth')
 		model_dict = {}
 		state_dict = self.state_dict()
 		
-		if not mc_dropout:
-			for k, v in pretrain_dict.items():
-				if k in state_dict:
-					model_dict[k] = v
-		else:
-			with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'structure', 'preload_mcdropout.map.json')) as fptr:
-				pretrain_to_mcdropout = json.loads(fptr.read())
-				for k, v in pretrain_to_mcdropout.items():
-					model_dict[v] = pretrain_dict[k]
-
+		for k, v in pretrain_dict.items():
+			if k in state_dict:
+				model_dict[k] = v
+	
 		state_dict.update(model_dict)
 		self.load_state_dict(state_dict)
 
@@ -209,7 +175,7 @@ class MobileNetV2(nn.Module):
 
 if __name__ == "__main__":
 	input = torch.rand(1, 3, 512, 512)
-	model = MobileNetV2(output_stride=16, batchnorm=nn.BatchNorm2d, mc_dropout=False)
+	model = MobileNetV2(output_stride=16, batchnorm=nn.BatchNorm2d, mc_dropout=True)
 	output, low_level_feat = model(input)
 	print(output.size())
 	print(low_level_feat.size())

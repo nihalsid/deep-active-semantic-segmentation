@@ -15,10 +15,10 @@ from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver, ActiveSaver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-
+from utils import active_selection
 import constants
-
 import sys
+
 
 class Trainer(object):
 
@@ -39,7 +39,7 @@ class Trainer(object):
 
 		args = self.args
 		
-		model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn)
+		model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn, mc_dropout=args.mc_dropout)
 		train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
 						{'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
 		
@@ -262,6 +262,8 @@ def main():
 						help='batch size queried from oracle')
 	parser.add_argument('--active-train-mode', type=str, default='reset_model',
 						help='whether to reset model after each active loop or train only on new data', choices=['reset_model', 'query_only', 'mix'])
+	parser.add_argument('--mc-dropout', type=bool,
+						help='Use dropout across all the model weights')
 
 	args = parser.parse_args()
 	args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -312,16 +314,16 @@ def main():
 	
 	kwargs = {'num_workers': args.workers, 'pin_memory': True, 'init_set': args.seed_set}
 	dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
+	
 	training_set = dataloaders[0]
 	dataloaders = dataloaders[1:]
 
 	saver = Saver(args, remove_existing=False)
 	saver.save_experiment_config()
+	
 	summary = TensorboardSummary(saver.experiment_dir)
 	writer = summary.create_summary()
 	
-	active_selection_function = lambda x: random.random()
-
 	print()
 
 	trainer = Trainer(args, dataloaders)
@@ -330,26 +332,29 @@ def main():
 	total_active_selection_iterations = training_set.count_expands_needed(args.active_batch_size)
 
 	for i in range(args.resume):
-		training_set.expand_training_set(active_selection_function, args.active_batch_size)
+		training_set.expand_training_set(active_selection.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
 
 	expansion_factor = min(args.eval_interval, args.epochs) if args.active_train_mode == 'query_only' else 1
 	effective_epochs = math.ceil(args.epochs / expansion_factor)
 
-
-	for selection_iter in range(args.resume, total_active_selection_iterations):
+	for selection_iter in range(1):#args.resume, total_active_selection_iterations):
 		
 		print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d} [{len(training_set):04d}/{len(training_set.remaining_image_paths):04d}/{training_set.count_expands_needed(args.active_batch_size):03d}]')
 		
 		trainer.setup_saver_and_summary(args.active_batch_size * (selection_iter + 1))
 		
 		train_loss = math.inf
+		
 		if args.active_train_mode == 'query_only':
 			training_set.replicate_training_set(expansion_factor)
 			print(f'\nExpanding training set with {len(training_set)} images to {len(training_set) * expansion_factor} images')
+
+		if args.active_train_mode == 'reset_model':
+			trainer.initialize()
+		
 		for epoch in range(effective_epochs):
 			
 			if args.active_train_mode == 'reset_model':
-				trainer.initialize()
 				training_set.set_mode_all()
 			elif args.active_train_mode == 'query_only':
 				training_set.set_mode_last()
@@ -357,10 +362,10 @@ def main():
 				raise NotImplementedError
 
 			train_loss = trainer.training(epoch)
+
 			if args.active_train_mode == 'query_only' or epoch % args.eval_interval == (args.eval_interval - 1) :
 				test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(epoch)
-		
-		
+				
 		writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), args.active_batch_size * (selection_iter + 1))
 		writer.add_scalar('active_loop/val_loss', test_loss, args.active_batch_size * (selection_iter + 1))
 		writer.add_scalar('active_loop/mIoU', mIoU, args.active_batch_size * (selection_iter + 1))
@@ -372,7 +377,7 @@ def main():
 
 		trainer.writer.close()
 		training_set.reset_replicated_training_set()
-		training_set.expand_training_set(active_selection_function, args.active_batch_size)
+		training_set.expand_training_set(active_selection.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
 	
 	writer.close()
 

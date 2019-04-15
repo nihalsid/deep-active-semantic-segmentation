@@ -17,6 +17,30 @@ class Mode(Enum):
 	LAST_ADDED_BATCH = 1
 
 
+class PathsDataset(data.Dataset):
+
+		def __init__(self, paths, crop_size):
+			self.paths = paths
+			self.crop_size = crop_size
+
+
+		def __len__(self):
+			return len(self.paths)
+
+
+		def __getitem__(self, index):
+			
+			img_path = self.paths[index]
+			image = Image.open(img_path).convert('RGB')
+			composed_tr = transforms.Compose([
+				tr.FixScaleCropImageOnly(crop_size=self.crop_size),
+				transforms.ToTensor(),
+				transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+			])
+
+			return composed_tr(image)
+
+
 class ActiveCityscapes(data.Dataset):
 	
 	NUM_CLASSES = 19
@@ -124,8 +148,7 @@ class ActiveCityscapes(data.Dataset):
 		self.last_added_image_paths = list(set(self.last_added_image_paths))
 
 
-	def expand_training_set(self, evaluation_function, batch_size):
-		scores = list(map(evaluation_function, self.remaining_image_paths))
+	def expand_training_set(self, scores, batch_size):
 		num_new_samples = min(batch_size, len(scores))
 		selected_samples = list(zip(*sorted(zip(scores, self.remaining_image_paths), key=lambda x: x[0], reverse=True)))[1][:num_new_samples]
 		self.current_image_paths.extend(selected_samples)

@@ -67,8 +67,16 @@ class DeepLab(nn.Module):
 
 
 if __name__ == "__main__":
+
 	model = DeepLab(backbone='mobilenet', output_stride=16, mc_dropout=True)
 	model.eval()
+	
+	def turn_on_dropout(m):
+		if type(m) == nn.Dropout2d:
+			m.train()
+
+	model.apply(turn_on_dropout)
+
 	input = torch.rand(1, 3, 513, 513)
 	output = model(input)
 	print(output.size())
