@@ -17,11 +17,12 @@ from dataloaders.utils import map_segmentation_to_colors
 
 class ActiveSelectionMCDropout:
 
-	def __init__(self, dataset_classes, crop_size, num_workers, cuda):
+	def __init__(self, dataset_classes, crop_size, num_workers, batch_size, cuda):
 		self.dataset_classes = dataset_classes
 		self.crop_size = crop_size
 		self.num_workers = num_workers
 		self.cuda = cuda
+		self.batch_size = batch_size
 
 
 	def get_random_uncertainity(self, images):
@@ -31,17 +32,24 @@ class ActiveSelectionMCDropout:
 		return scores
 
 
-	def _get_uncertainity_for_image(self, model, image):
-		outputs = np.zeros([constants.MC_STEPS, self.dataset_classes, image.shape[2], image.shape[3]])
+	def _get_uncertainity_for_batch(self, model, image_batch):
+		outputs = np.zeros([image_batch.shape[0], constants.MC_STEPS, self.dataset_classes, image_batch.shape[2], image_batch.shape[3]])
+
 		with torch.no_grad():
 			for step in range(constants.MC_STEPS):
-				outputs[step, :,  :, :] = model(image).cpu().numpy().squeeze()
+				outputs[:, step, :,  :, :] = model(image_batch).cpu().numpy().squeeze()
 
-		# visualize for debugging
-		# prediction = np.argmax(outputs.mean(axis=0), axis=0)
-		# self._visualize_variance(image.cpu().numpy().squeeze(), np.sum(np.var(outputs, axis=0), axis=0) / (constants.MC_STEPS * self.dataset_classes), prediction)
-		
-		return np.sum(np.var(outputs, axis=0)) / (constants.MC_STEPS * self.dataset_classes * image.shape[2] * image.shape[3])
+		variances = []
+
+		for i in range(image_batch.shape[0]):
+			
+			# visualize for debugging
+			#prediction = np.argmax(outputs[i, :, :, :, :].squeeze().mean(axis=0), axis=0)
+			#self._visualize_variance(image_batch[i, :, :, :].cpu().numpy().squeeze(), np.sum(np.var(outputs[i, :, :, :, :].squeeze(), axis=0), axis=0) / (constants.MC_STEPS * self.dataset_classes), prediction)
+			
+			variances.append(np.sum(np.var(outputs[i, :, :, :, :].squeeze(), axis=0)) / (constants.MC_STEPS * self.dataset_classes * image_batch.shape[2] * image_batch.shape[3]))
+
+		return variances
 
 
 	def get_uncertainity_for_images(self, model, images):
@@ -51,12 +59,12 @@ class ActiveSelectionMCDropout:
 				m.train()
 		model.apply(turn_on_dropout)
 
-		loader = DataLoader(active_cityscapes.PathsDataset(images, self.crop_size), batch_size=1, shuffle=False, num_workers=self.num_workers)
+		loader = DataLoader(active_cityscapes.PathsDataset(images, self.crop_size), batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 		variances = []
-		for image in tqdm(loader):
+		for image_batch in tqdm(loader):
 			if self.cuda:
-				image = image.cuda()
-			variances.append(self._get_uncertainity_for_image(model, image))
+				image_batch = image_batch.cuda()
+			variances.extend(self._get_uncertainity_for_batch(model, image_batch))
 		
 		model.eval()
 
@@ -130,7 +138,8 @@ if __name__ == '__main__':
 		'seed_set': '',
 		'cuda': True,
 		'num_workers': 4,
-		'seed_set': 'set_1.txt'
+		'seed_set': 'set_1.txt',
+		'batch_size': 4
 	}
 
 	args = dotdict(args)
@@ -151,5 +160,5 @@ if __name__ == '__main__':
 	# ensure that the loaded model is not crap
 	# validation(model, DataLoader(train_set, batch_size=2, shuffle=False), args)
 
-	active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, args.crop_size, args.num_workers, args.cuda)
-	active_selector.get_uncertainity_for_images(model, train_set.current_image_paths)
+	active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, args.crop_size, args.num_workers, args.batch_size, args.cuda)
+	print(active_selector.get_uncertainity_for_images(model, train_set.current_image_paths))
