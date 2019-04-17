@@ -10,4 +10,4 @@ indices = random.sample(range(len(image_paths)), 50)
 
 with open(f'set_{sys.argv[1]}.txt', 'w') as fptr:
 	for i in indices:
-		fptr.write(image_paths[i].replace("\\","/")+"\n")
+		fptr.write('/'+image_paths[i].replace("\\","/")+"\n")
