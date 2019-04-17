@@ -1,5 +1,4 @@
 import pickle
-import pyarrow as pa
 import lmdb
 import os
 import glob
@@ -58,4 +57,4 @@ def cityscapes_to_lmdb(root_path, split, lmdb_path):
 
 
 if __name__ == '__main__':
-	cityscapes_to_lmdb(r'D:\nihalsid\DeeplabV3+\datasets\cityscapes\\', 'test', r'D:\nihalsid\DeeplabV3+\datasets\cityscapes\test.db')
+	cityscapes_to_lmdb(r'/mnt/raid/yawar/deeplab_pytorch/datasets/cityscapes', 'test', r'D:\nihalsid\DeeplabV3+\datasets\cityscapes\test.db')

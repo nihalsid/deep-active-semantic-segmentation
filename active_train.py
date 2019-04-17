@@ -28,10 +28,11 @@ class Trainer(object):
 		self.train_loader, self.val_loader, self.test_loader, self.nclass = dataloaders
 
 		
-	def setup_saver_and_summary(self, num_current_labeled_samples):
+	def setup_saver_and_summary(self, num_current_labeled_samples, samples):
 		
 		self.saver = ActiveSaver(self.args, num_current_labeled_samples)
 		self.saver.save_experiment_config()
+		self.saver.save_active_selections(samples)
 		self.summary = TensorboardSummary(self.saver.experiment_dir)
 		self.writer = self.summary.create_summary()
 
@@ -196,8 +197,6 @@ def main():
 						help='dataset name (default: active_cityscapes)')
 	parser.add_argument('--use-sbd', action='store_true', default=False,
 						help='whether to use SBD dataset (default: False)')
-	parser.add_argument('--workers', type=int, default=4,
-						metavar='N', help='dataloader threads')
 	parser.add_argument('--base-size', type=int, default=513,
 						help='base image size')
 	parser.add_argument('--crop-size', type=int, default=513,
@@ -314,7 +313,7 @@ def main():
 	print(args)
 	torch.manual_seed(args.seed)
 	
-	kwargs = {'num_workers': args.workers, 'pin_memory': True, 'init_set': args.seed_set}
+	kwargs = {'pin_memory': True, 'init_set': args.seed_set}
 	dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
 	
 	training_set = dataloaders[0]
@@ -331,7 +330,7 @@ def main():
 	trainer = Trainer(args, dataloaders, mc_dropout)
 	trainer.initialize()
 			
-	active_selector = ActiveSelectionMCDropout(training_set.NUM_CLASSES, args.crop_size, args.workers, args.cuda)
+	active_selector = ActiveSelectionMCDropout(training_set.NUM_CLASSES, training_set.env, args.crop_size, args.batch_size)
 
 	total_active_selection_iterations = training_set.count_expands_needed(args.active_batch_size)
 
@@ -345,7 +344,7 @@ def main():
 		
 		print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d} [{len(training_set):04d}/{len(training_set.remaining_image_paths):04d}/{training_set.count_expands_needed(args.active_batch_size):03d}]')
 		
-		trainer.setup_saver_and_summary(args.active_batch_size * (selection_iter + 1))
+		trainer.setup_saver_and_summary(args.active_batch_size * (selection_iter + 1), training_set.current_image_paths)
 		
 		train_loss = math.inf
 		
@@ -386,7 +385,7 @@ def main():
 			training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
 		elif args.active_selection_mode == 'variance':
 			trainer.model.eval()
-			training_set.expand_training_set(active_selector.get_uncertainity_for_images(trainer.model, training_set.remaining_image_paths))
+			training_set.expand_training_set(active_selector.get_uncertainity_for_images(trainer.model, training_set.remaining_image_paths[:100]), args.active_batch_size)
 		else:
 			raise NotImplementedError
 	writer.close()

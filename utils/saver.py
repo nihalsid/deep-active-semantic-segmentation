@@ -64,6 +64,14 @@ class ActiveSaver(Saver):
 			torch.save(state, filename)
 
 
+	def save_active_selections(self, paths):
+		
+		filename = os.path.join(self.experiment_dir, 'selections.txt')
+		with open(filename, 'w') as fptr:
+			for p in paths:
+				fptr.write(p.decode('utf-8')+'\n')
+		
+	
 class PassiveSaver(Saver):
 
 	def __init__(self, args):

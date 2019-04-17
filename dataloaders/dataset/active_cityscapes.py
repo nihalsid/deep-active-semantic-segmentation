@@ -62,12 +62,10 @@ class ActiveCityscapes(data.Dataset):
 		self.crop_size = crop_size
 		self.base_size = base_size
 		self.overfit = overfit
-
 		self.env = lmdb.open(os.path.join(path, split + ".db"), subdir=False, readonly=True, lock=False, readahead=False, meminit=False)
-		self.image_paths = [1]
+		self.image_paths = []
 		with self.env.begin(write=False) as txn:
 			self.image_paths = pickle.loads(txn.get(b'__keys__'))
-
 		self.current_image_paths = []
 		self.last_added_image_paths = []
 		self.mode = Mode.ALL_BATCHES 
@@ -117,7 +115,6 @@ class ActiveCityscapes(data.Dataset):
 			img_path = self.last_added_image_paths[index]
 
 		loaded_npy = None
-		
 		with self.env.begin(write=False) as txn:
 			loaded_npy = pickle.loads(txn.get(img_path))
 
