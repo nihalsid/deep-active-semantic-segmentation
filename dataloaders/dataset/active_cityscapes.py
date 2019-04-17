@@ -10,6 +10,9 @@ import random
 import math
 from enum import Enum
 import torch
+import lmdb
+import pickle
+from utils.active_selection import ActiveSelectionMCDropout
 
 
 class Mode(Enum):
@@ -19,7 +22,9 @@ class Mode(Enum):
 
 class PathsDataset(data.Dataset):
 
-		def __init__(self, paths, crop_size):
+		def __init__(self, env, paths, crop_size):
+
+			self.env = env
 			self.paths = paths
 			self.crop_size = crop_size
 
@@ -31,14 +36,19 @@ class PathsDataset(data.Dataset):
 		def __getitem__(self, index):
 			
 			img_path = self.paths[index]
-			image = Image.open(img_path).convert('RGB')
+			loaded_npy = None
+			with self.env.begin(write=False) as txn:
+				loaded_npy = pickle.loads(txn.get(img_path))
+			
+			image = loaded_npy[:, :, 0:3]
+			
 			composed_tr = transforms.Compose([
 				tr.FixScaleCropImageOnly(crop_size=self.crop_size),
 				transforms.ToTensor(),
 				transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 			])
 
-			return composed_tr(image)
+			return composed_tr(Image.fromarray(image))
 
 
 class ActiveCityscapes(data.Dataset):
@@ -53,16 +63,11 @@ class ActiveCityscapes(data.Dataset):
 		self.base_size = base_size
 		self.overfit = overfit
 
-		self.images_base = os.path.join(self.path, 'leftImg8bit', "train" if self.overfit else self.split)
-		self.labels_base = os.path.join(self.path, 'gtFine_trainvaltest', 'gtFine', "train" if self.overfit else self.split)
+		self.env = lmdb.open(os.path.join(path, split + ".db"), subdir=False, readonly=True, lock=False, readahead=False, meminit=False)
+		self.image_paths = [1]
+		with self.env.begin(write=False) as txn:
+			self.image_paths = pickle.loads(txn.get(b'__keys__'))
 
-		self.void_classes = [0, 1, 2, 3, 4, 5, 6, 9, 10, 14, 15, 16, 18, 29, 30, -1]
-		self.valid_classes = [7, 8, 11, 12, 13, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33]
-		self.class_names = ['unlabelled', 'road', 'sidewalk', 'building', 'wall', 'fence', 'pole', 'traffic_light', 'traffic_sign', 'vegetation', 'terrain', 'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle']
-		self.ignore_index = 255
-		self.class_map = dict(zip(self.valid_classes + self.void_classes, list(range(self.NUM_CLASSES)) + [self.ignore_index] * len(self.void_classes)))
-		
-		self.image_paths = glob.glob(os.path.join(self.images_base, '**', '*.png'), recursive=True)
 		self.current_image_paths = []
 		self.last_added_image_paths = []
 		self.mode = Mode.ALL_BATCHES 
@@ -74,10 +79,12 @@ class ActiveCityscapes(data.Dataset):
 			raise Exception("No images found in dataset directory")
 
 		if self.split == 'train':
+			self.current_image_paths = self.image_paths
+			self.remaining_image_paths = []
 			with open(os.path.join(self.path, 'seed_sets', init_set), "r") as fptr:
-				self.current_image_paths = [os.path.join(self.path, x.strip().replace('/', os.sep)) for x in fptr.readlines() if x is not '']
-				self.remaining_image_paths = [x for x in self.image_paths if x not in self.current_image_paths]
-				print(f'# of current_image_paths = {len(self.current_image_paths)}, # of remaining_image_paths = {len(self.remaining_image_paths)}')
+			 	self.current_image_paths = [u'{}'.format(x.strip()).encode('ascii') for x in fptr.readlines() if x is not '']
+			 	self.remaining_image_paths = [x for x in self.image_paths if x not in self.current_image_paths]
+			 	print(f'# of current_image_paths = {len(self.current_image_paths)}, # of remaining_image_paths = {len(self.remaining_image_paths)}')
 		else:
 			self.current_image_paths = self.image_paths
 			self.remaining_image_paths = []
@@ -109,15 +116,15 @@ class ActiveCityscapes(data.Dataset):
 		else:
 			img_path = self.last_added_image_paths[index]
 
-		lbl_path = os.path.join(self.labels_base, Path(img_path).parts[-2], f'{os.path.basename(img_path)[:-15]}gtFine_labelIds.png')
+		loaded_npy = None
+		
+		with self.env.begin(write=False) as txn:
+			loaded_npy = pickle.loads(txn.get(img_path))
 
-		image = Image.open(img_path).convert('RGB')
-		target = np.array(Image.open(lbl_path), dtype=np.uint8)
-
-		mapper = np.vectorize(lambda l: self.class_map[l])
-		target[:, :] = mapper(target)
-			
-		sample = {'image': image, 'label': Image.fromarray(target)}
+		image = loaded_npy[:, :, 0:3]
+		target = loaded_npy[:, :, 3]
+	
+		sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
 
 		retval = None
 
@@ -201,20 +208,17 @@ if __name__ == '__main__':
 	from torch.utils.data import DataLoader
 	import matplotlib.pyplot as plt
 	from dataloaders.utils import map_segmentation_to_colors
-
 	path = 'D:\\nihalsid\\DeeplabV3+\\datasets\\cityscapes'
 	crop_size = 513
 	base_size = 513
 	split = 'train'
 	
 	cityscapes_train = ActiveCityscapes(path, base_size, crop_size, split, 'set_0.txt')
-	dataloader = DataLoader(cityscapes_train, batch_size=2, shuffle=True, num_workers=2)
+	dataloader = DataLoader(cityscapes_train, batch_size=2, shuffle=True, num_workers=0)
 
-	def random_score(image_path):
-		return random.random()
-
+	active_selector = ActiveSelectionMCDropout(19, crop_size, 2, 2, True)
 	print('Before Expansion', len(dataloader))
-	cityscapes_train.expand_training_set(random_score, 50)
+	#cityscapes_train.expand_training_set(active_selector.get_random_uncertainity(cityscapes_train.current_image_paths), 10)
 	print('After Expansion', len(dataloader))
 
 	for i, sample in enumerate(dataloader, 0):

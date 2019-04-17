@@ -127,3 +127,4 @@ datasets/cityscapes/gtFine_trainvaltest
 datasets/cityscapes/leftImg8bit
 runs/
 constants.py
+*.db

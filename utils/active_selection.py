@@ -11,18 +11,16 @@ import torch
 import matplotlib
 import matplotlib.pyplot as plt
 from dataloaders.utils import map_segmentation_to_colors
-
-
+from scipy import stats
 
 
 class ActiveSelectionMCDropout:
 
-	def __init__(self, dataset_classes, crop_size, num_workers, batch_size, cuda):
-		self.dataset_classes = dataset_classes
+	def __init__(self, dataset_num_classes, dataset_lmdb_env, crop_size, batch_size):
+		self.dataset_num_classes = dataset_num_classes
 		self.crop_size = crop_size
-		self.num_workers = num_workers
-		self.cuda = cuda
 		self.batch_size = batch_size
+		self.env = dataset_lmdb_env
 
 
 	def get_random_uncertainity(self, images):
@@ -33,23 +31,27 @@ class ActiveSelectionMCDropout:
 
 
 	def _get_uncertainity_for_batch(self, model, image_batch):
-		outputs = np.zeros([image_batch.shape[0], constants.MC_STEPS, self.dataset_classes, image_batch.shape[2], image_batch.shape[3]])
-
+		
+		outputs = torch.cuda.FloatTensor(image_batch.shape[0], constants.MC_STEPS, image_batch.shape[2], image_batch.shape[3])
 		with torch.no_grad():
 			for step in range(constants.MC_STEPS):
-				outputs[:, step, :,  :, :] = model(image_batch).cpu().numpy().squeeze()
+				outputs[:, step, :, :] = torch.argmax(model(image_batch), dim=1)
 
-		variances = []
+		entropies = []
 
 		for i in range(image_batch.shape[0]):
+			entropy_map = torch.cuda.FloatTensor(image_batch.shape[2], image_batch.shape[3]).fill_(0)
+			
+			for c in range(self.dataset_num_classes):
+				p = torch.sum(outputs[i, :, :, :] == c, dim=0, dtype=torch.float32) / constants.MC_STEPS
+				entropy_map = entropy_map - (p * torch.log2(p + 1e-12))
 			
 			# visualize for debugging
-			#prediction = np.argmax(outputs[i, :, :, :, :].squeeze().mean(axis=0), axis=0)
-			#self._visualize_variance(image_batch[i, :, :, :].cpu().numpy().squeeze(), np.sum(np.var(outputs[i, :, :, :, :].squeeze(), axis=0), axis=0) / (constants.MC_STEPS * self.dataset_classes), prediction)
-			
-			variances.append(np.sum(np.var(outputs[i, :, :, :, :].squeeze(), axis=0)) / (constants.MC_STEPS * self.dataset_classes * image_batch.shape[2] * image_batch.shape[3]))
-
-		return variances
+			#prediction = stats.mode(outputs[i, :, :, :].cpu().numpy(), axis=0)[0].squeeze()
+			#self._visualize_entropy(image_batch[i, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
+			entropies.append(torch.sum(entropy_map).cpu().item() / (image_batch.shape[2] * image_batch.shape[3]))
+		
+		return entropies
 
 
 	def get_uncertainity_for_images(self, model, images):
@@ -59,22 +61,22 @@ class ActiveSelectionMCDropout:
 				m.train()
 		model.apply(turn_on_dropout)
 
-		loader = DataLoader(active_cityscapes.PathsDataset(images, self.crop_size), batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
-		variances = []
+		loader = DataLoader(active_cityscapes.PathsDataset(self.env, images, self.crop_size), batch_size=self.batch_size, shuffle=False, num_workers=0)
+
+		entropies = []
 		for image_batch in tqdm(loader):
-			if self.cuda:
-				image_batch = image_batch.cuda()
-			variances.extend(self._get_uncertainity_for_batch(model, image_batch))
+			image_batch = image_batch.cuda()
+			entropies.extend(self._get_uncertainity_for_batch(model, image_batch))
 		
 		model.eval()
 
-		return variances
+		return entropies
 	
 
-	def _visualize_variance(self, image_normalized, variance_map, prediction):
+	def _visualize_entropy(self, image_normalized, entropy_map, prediction):
 		image_unnormalized = ((np.transpose(image_normalized, axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
 		prediction_mapped = map_segmentation_to_colors(prediction.astype(np.uint8), 'cityscapes')
-		norm = matplotlib.colors.Normalize(vmin = np.min(variance_map), vmax = np.max(variance_map), clip = False)
+		norm = matplotlib.colors.Normalize(vmin = np.min(entropy_map), vmax = np.max(entropy_map), clip = False)
 		plt.figure()
 		plt.title('display')
 		plt.subplot(1, 3, 1)
@@ -82,7 +84,7 @@ class ActiveSelectionMCDropout:
 		plt.subplot(1, 3, 2)
 		plt.imshow(prediction_mapped)
 		plt.subplot(1, 3, 3)
-		plt.imshow(variance_map, norm=norm, cmap='gray')
+		plt.imshow(entropy_map, norm=norm, cmap='gray')
 		plt.show(block=True)
 
 
@@ -136,10 +138,8 @@ if __name__ == '__main__':
 		'base_size': 513,
 		'crop_size': 513,
 		'seed_set': '',
-		'cuda': True,
-		'num_workers': 4,
-		'seed_set': 'set_1.txt',
-		'batch_size': 4
+		'seed_set': 'set_0.txt',
+		'batch_size': 16
 	}
 
 	args = dotdict(args)
@@ -160,5 +160,5 @@ if __name__ == '__main__':
 	# ensure that the loaded model is not crap
 	# validation(model, DataLoader(train_set, batch_size=2, shuffle=False), args)
 
-	active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, args.crop_size, args.num_workers, args.batch_size, args.cuda)
+	active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
 	print(active_selector.get_uncertainity_for_images(model, train_set.current_image_paths))

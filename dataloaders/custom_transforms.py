@@ -109,8 +109,8 @@ class RandomScaleCrop(object):
         if short_size < self.crop_size:
             padh = self.crop_size - oh if oh < self.crop_size else 0
             padw = self.crop_size - ow if ow < self.crop_size else 0
-            img = ImageOps.expand(img, border=(0, 0, padw, padh), fill=255)
-            mask = ImageOps.expand(mask, border=(0, 0, padw, padh), fill=self.fill)
+            img = ImageOps.expand(img, border=(0, 0, padw, padh), fill=0)
+            mask = ImageOps.expand(mask, border=(0, 0, padw, padh), fill=255)
         # random crop crop_size
         w, h = img.size
         x1 = random.randint(0, w - self.crop_size)
