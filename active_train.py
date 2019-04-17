@@ -385,7 +385,7 @@ def main():
 			training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
 		elif args.active_selection_mode == 'variance':
 			trainer.model.eval()
-			training_set.expand_training_set(active_selector.get_uncertainity_for_images(trainer.model, training_set.remaining_image_paths[:100]), args.active_batch_size)
+			training_set.expand_training_set(active_selector.get_uncertainity_for_images(trainer.model, training_set.remaining_image_paths), args.active_batch_size)
 		else:
 			raise NotImplementedError
 	writer.close()
