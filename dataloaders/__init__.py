@@ -11,11 +11,11 @@ def make_dataloader(dataset, base_size, crop_size, batch_size, overfit, **kwargs
 		val_set = cityscapes.Cityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='val', overfit=overfit)
 		test_set = cityscapes.Cityscapes(path=dataset_path, base_size=base_size, crop_size=crop_size, split='test', overfit=overfit)
 		num_classes = train_set.NUM_CLASSES
-		train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, **kwargs)
-		val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, **kwargs)
-		test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, **kwargs)
+		train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, **kwargs)
+		val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=0, **kwargs)
+		test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=0, **kwargs)
 
-		return train_loader, val_loader, test_loader, num_classes
+		return train_set, train_loader, val_loader, test_loader, num_classes
 
 	if dataset == 'active_cityscapes':
 		dataset_path = os.path.join(DATASET_ROOT, 'cityscapes')

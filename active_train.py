@@ -28,9 +28,9 @@ class Trainer(object):
 		self.train_loader, self.val_loader, self.test_loader, self.nclass = dataloaders
 
 		
-	def setup_saver_and_summary(self, num_current_labeled_samples, samples):
+	def setup_saver_and_summary(self, num_current_labeled_samples, samples, experiment_group=None):
 		
-		self.saver = ActiveSaver(self.args, num_current_labeled_samples)
+		self.saver = ActiveSaver(self.args, num_current_labeled_samples, experiment_group=experiment_group)
 		self.saver.save_experiment_config()
 		self.saver.save_active_selections(samples)
 		self.summary = TensorboardSummary(self.saver.experiment_dir)
@@ -261,7 +261,7 @@ def main():
 	parser.add_argument('--active-batch-size', action='store_true', default=50,
 						help='batch size queried from oracle')
 	parser.add_argument('--active-train-mode', type=str, default='reset_model',
-						help='whether to reset model after each active loop or train only on new data', choices=['reset_model', 'query_only', 'mix'])
+						help='whether to reset model after each active loop or train only on new data', choices=['query_only', 'mix'])
 	parser.add_argument('--active-selection-mode', type=str, default='random', choices=['random', 'variance'], help='method to select new samples')
 
 	args = parser.parse_args()
@@ -307,7 +307,7 @@ def main():
 	if args.checkname is None:
 		args.checkname = 'deeplab-'+str(args.backbone)
 
-	mc_dropout = args.active_selection_mode == 'variance'
+	mc_dropout = True
 	
 	print()
 	print(args)
@@ -337,8 +337,8 @@ def main():
 	for i in range(args.resume):
 		training_set.expand_training_set(active_selection.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
 
-	expansion_factor = min(args.eval_interval, args.epochs) if args.active_train_mode == 'query_only' else 1
-	effective_epochs = math.ceil(args.epochs / expansion_factor)
+	assert (args.eval_interval <= args.epochs)
+	effective_epochs = math.ceil(args.epochs / args.eval_interval)
 
 	for selection_iter in range(args.resume, total_active_selection_iterations):
 		
@@ -348,26 +348,18 @@ def main():
 		
 		train_loss = math.inf
 		
-		if args.active_train_mode == 'query_only':
-			print(f'\nExpanding training set with {len(training_set)} images to {len(training_set) * expansion_factor} images')
-			training_set.replicate_training_set(expansion_factor)
+		print(f'\nExpanding training set with {len(training_set)} images to {len(training_set) * args.eval_interval} images')
+		training_set.replicate_training_set(args.eval_interval)
 
-		if args.active_train_mode == 'reset_model':
-			trainer.initialize()
-		
 		for epoch in range(effective_epochs):
 			
-			if args.active_train_mode == 'reset_model':
-				training_set.set_mode_all()
-			elif args.active_train_mode == 'query_only':
+			if args.active_train_mode == 'query_only':
 				training_set.set_mode_last()
 			else: 
 				raise NotImplementedError
 
 			train_loss = trainer.training(epoch)
-
-			if args.active_train_mode == 'query_only' or epoch % args.eval_interval == (args.eval_interval - 1) :
-				test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(epoch)
+			test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(epoch)
 				
 		writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), args.active_batch_size * (selection_iter + 1))
 		writer.add_scalar('active_loop/val_loss', test_loss, args.active_batch_size * (selection_iter + 1))
@@ -388,6 +380,7 @@ def main():
 			training_set.expand_training_set(active_selector.get_uncertainity_for_images(trainer.model, training_set.remaining_image_paths), args.active_batch_size)
 		else:
 			raise NotImplementedError
+
 	writer.close()
 
 if __name__ == "__main__":

@@ -8,10 +8,14 @@ import json
 
 class Saver:
 
-	def __init__(self, args, remove_existing=False):
+	def __init__(self, args, experiment_group=None, remove_existing=False):
 
 		self.args = args
-		self.directory = os.path.join(constants.RUNS, args.dataset, args.checkname)
+		
+		if experiment_group == None:
+			experiment_group = args.dataset
+
+		self.directory = os.path.join(constants.RUNS, experiment_group, args.checkname)
 		self.experiment_dir = self.directory
 
 		if remove_existing and os.path.exists(self.experiment_dir):
@@ -39,9 +43,9 @@ class Saver:
 
 class ActiveSaver(Saver):
 	
-	def __init__(self, args, num_of_labeled_samples):
+	def __init__(self, args, num_of_labeled_samples, experiment_group=None):
 
-		super().__init__(args)
+		super().__init__(args, experiment_group=experiment_group)
 		self.experiment_dir = os.path.join(self.directory, f'run_{num_of_labeled_samples:04d}')
 
 		if not os.path.exists(self.experiment_dir):
