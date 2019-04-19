@@ -152,8 +152,8 @@ if __name__ == '__main__':
 	patch_replication_callback(model)
 	model = model.cuda()
 	
-	checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes', 'al_0-random-overfit50-bs_50-deeplab-mobilenet-bs_4-513x513', 'run_0050', 'best.pth.tar'))
-	model.module.load_state_dict(checkpoint['state_dict'])
+	#checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes', 'al_0-random-overfit50-bs_50-deeplab-mobilenet-bs_4-513x513', 'run_0050', 'best.pth.tar'))
+	#model.module.load_state_dict(checkpoint['state_dict'])
 	
 	model.eval()
 	

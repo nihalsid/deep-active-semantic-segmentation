@@ -6,6 +6,8 @@ from dataloaders import custom_transforms as tr
 from torch.utils import data
 import glob 
 from pathlib import Path
+import lmdb
+import pickle
 
 
 class Cityscapes(data.Dataset):
@@ -20,16 +22,11 @@ class Cityscapes(data.Dataset):
 		self.base_size = base_size
 		self.overfit = overfit
 
-		self.images_base = os.path.join(self.path, 'leftImg8bit', "train" if self.overfit else self.split)
-		self.labels_base = os.path.join(self.path, 'gtFine_trainvaltest', 'gtFine', "train" if self.overfit else self.split)
+		self.env = lmdb.open(os.path.join(path, split + ".db"), subdir=False, readonly=True, lock=False, readahead=False, meminit=False)
 
-		self.void_classes = [0, 1, 2, 3, 4, 5, 6, 9, 10, 14, 15, 16, 18, 29, 30, -1]
-		self.valid_classes = [7, 8, 11, 12, 13, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33]
-		self.class_names = ['unlabelled', 'road', 'sidewalk', 'building', 'wall', 'fence', 'pole', 'traffic_light', 'traffic_sign', 'vegetation', 'terrain', 'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle']
-		self.ignore_index = 255
-		self.class_map = dict(zip(self.valid_classes + self.void_classes, list(range(self.NUM_CLASSES)) + [self.ignore_index] * len(self.void_classes)))
-		
-		self.image_paths = glob.glob(os.path.join(self.images_base, '**', '*.png'), recursive=True)
+		self.image_paths = []
+		with self.env.begin(write=False) as txn:
+			self.image_paths = pickle.loads(txn.get(b'__keys__'))
 		
 		if overfit:
 			self.image_paths = self.image_paths[:1]
@@ -43,31 +40,49 @@ class Cityscapes(data.Dataset):
 
 
 	def __getitem__(self, index):
-
+		
 		img_path = self.image_paths[index]
-		lbl_path = os.path.join(self.labels_base, Path(img_path).parts[-2], f'{os.path.basename(img_path)[:-15]}gtFine_labelIds.png')
+		
+		loaded_npy = None
+		with self.env.begin(write=False) as txn:
+			loaded_npy = pickle.loads(txn.get(img_path))
 
-		image = Image.open(img_path).convert('RGB')
-		target = np.array(Image.open(lbl_path), dtype=np.uint8)
+		image = loaded_npy[:, :, 0:3]
+		target = loaded_npy[:, :, 3]
+	
+		sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
 
-		mapper = np.vectorize(lambda l: self.class_map[l])
-		target[:, :] = mapper(target)
-			
-		sample = {'image': image, 'label': Image.fromarray(target)}
+		retval = None
 
 		if self.overfit:
-			return self.transform_test(sample)
+			retval = self.transform_test(sample)
 
 		if self.split == 'train':
-			return self.transform_train(sample)
+			retval = self.transform_train(sample)
 
 		elif self.split == 'val':
-			return self.transform_val(sample)
+			retval = self.transform_val(sample)
 
 		elif self.split == 'test':
-			return self.transform_test(sample)
+			retval = self.transform_test(sample)
 
-		raise Exception('Undefined split - should be either test/train/val')
+		if retval is None:
+			raise Exception('Undefined split - should be either test/train/val')
+
+		return retval
+
+
+	def replicate_training_set(self, factor):
+		self.image_paths = self.image_paths * factor
+		
+
+	def reset_replicated_training_set(self):
+		self.image_paths = list(set(self.image_paths))
+
+
+	def set_paths(self, pathlist):
+
+		self.image_paths = pathlist
 
 	
 	def transform_train(self, sample):
@@ -116,7 +131,7 @@ if __name__ == '__main__':
 	split = 'test'
 	
 	cityscapes_train = Cityscapes(path, base_size, crop_size, split)
-	dataloader = DataLoader(cityscapes_train, batch_size=2, shuffle=True, num_workers=2)
+	dataloader = DataLoader(cityscapes_train, batch_size=2, shuffle=True, num_workers=0)
 
 	for i, sample in enumerate(dataloader, 0):
 		for j in range(sample['image'].size()[0]):
