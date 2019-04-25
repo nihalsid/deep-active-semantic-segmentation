@@ -18,6 +18,8 @@ from utils.active_selection import ActiveSelectionMCDropout
 from utils.metrics import Evaluator
 import constants
 import sys
+from utils.early_stop import EarlyStopChecker
+
 
 
 class Trainer(object):
@@ -258,11 +260,13 @@ def main():
 						help='overfit to one sample')
 	parser.add_argument('--seed_set', action='store_true', default='set_0.txt',
 						help='initial labeled set')
-	parser.add_argument('--active-batch-size', action='store_true', default=50,
+	parser.add_argument('--active-batch-size', type=int, default=50,
 						help='batch size queried from oracle')
-	parser.add_argument('--active-train-mode', type=str, default='reset_model',
-						help='whether to reset model after each active loop or train only on new data', choices=['query_only', 'mix'])
+	parser.add_argument('--active-train-mode', type=str, default='scratch',
+						help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
 	parser.add_argument('--active-selection-mode', type=str, default='random', choices=['random', 'variance'], help='method to select new samples')
+	parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
+	parser.add_argument('--min-improvement', type=float, default=0.01, help='evaluation interval (default: 1)')
 
 	args = parser.parse_args()
 	args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -332,7 +336,7 @@ def main():
 			
 	active_selector = ActiveSelectionMCDropout(training_set.NUM_CLASSES, training_set.env, args.crop_size, args.batch_size)
 
-	total_active_selection_iterations = training_set.count_expands_needed(args.active_batch_size)
+	total_active_selection_iterations = min(training_set.count_expands_needed(args.active_batch_size), args.max_iterations)
 
 	for i in range(args.resume):
 		training_set.expand_training_set(active_selection.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
@@ -340,38 +344,43 @@ def main():
 	assert (args.eval_interval <= args.epochs)
 	effective_epochs = math.ceil(args.epochs / args.eval_interval)
 
+	if args.active_train_mode == 'last':
+		training_set.set_mode_last()
+	if args.active_train_mode == 'scratch':
+		training_set.set_mode_all()
+	else: 
+		raise NotImplementedError
+
 	for selection_iter in range(args.resume, total_active_selection_iterations):
 		
 		print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d} [{len(training_set):04d}/{len(training_set.remaining_image_paths):04d}/{training_set.count_expands_needed(args.active_batch_size):03d}]')
 		
-		trainer.setup_saver_and_summary(args.active_batch_size * (selection_iter + 1), training_set.current_image_paths)
-		
-		train_loss = math.inf
-		
+		trainer.setup_saver_and_summary(len(training_set.current_image_paths), training_set.current_image_paths)
+	
+		if args.active_train_mode == 'scratch':
+			trainer.initialize()		
+
 		print(f'\nExpanding training set with {len(training_set)} images to {len(training_set) * args.eval_interval} images')
 		training_set.replicate_training_set(args.eval_interval)
 
-		for epoch in range(effective_epochs):
-			
-			if args.active_train_mode == 'query_only':
-				training_set.set_mode_last()
-			else: 
-				raise NotImplementedError
+		early_stop = EarlyStopChecker(patience=2, min_improvement=args.min_improvement)
 
+		for epoch in range(effective_epochs):
 			train_loss = trainer.training(epoch)
 			test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(epoch)
 				
-		writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), args.active_batch_size * (selection_iter + 1))
-		writer.add_scalar('active_loop/val_loss', test_loss, args.active_batch_size * (selection_iter + 1))
-		writer.add_scalar('active_loop/mIoU', mIoU, args.active_batch_size * (selection_iter + 1))
-		writer.add_scalar('active_loop/Acc', Acc, args.active_batch_size * (selection_iter + 1))
-		writer.add_scalar('active_loop/Acc_class', Acc_class, args.active_batch_size * (selection_iter + 1))
-		writer.add_scalar('active_loop/fwIoU', FWIoU, args.active_batch_size * (selection_iter + 1))
+		training_set.reset_replicated_training_set()
+
+		writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), len(training_set.current_image_paths))
+		writer.add_scalar('active_loop/val_loss', test_loss, len(training_set.current_image_paths))
+		writer.add_scalar('active_loop/mIoU', mIoU, len(training_set.current_image_paths))
+		writer.add_scalar('active_loop/Acc', Acc, len(training_set.current_image_paths))
+		writer.add_scalar('active_loop/Acc_class', Acc_class, len(training_set.current_image_paths))
+		writer.add_scalar('active_loop/fwIoU', FWIoU, len(training_set.current_image_paths))
 		
-		summary.visualize_image(writer, args.dataset, visualizations[0], visualizations[1], visualizations[2], args.active_batch_size * (selection_iter + 1))
+		summary.visualize_image(writer, args.dataset, visualizations[0], visualizations[1], visualizations[2], len(training_set.current_image_paths))
 
 		trainer.writer.close()
-		training_set.reset_replicated_training_set()
 
 		if args.active_selection_mode == 'random': 
 			training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)

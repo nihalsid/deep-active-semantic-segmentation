@@ -11,28 +11,7 @@ from active_train import Trainer
 import torch
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
-
-class EarlyStopChecker:
-
-	def __init__(self, patience, min_improvement):
-		
-		self.patience = patience
-		self.min_improvement = min_improvement
-		self.best_score = 0
-		self.counter = 0
-
-
-	def __call__(self, score):
-
-		if score - self.best_score >= self.min_improvement:
-			self.best_score = score
-			self.counter = 0
-		else:
-			self.counter += 1
-			if self.counter >= self.patience:
-				return True
-
-		return False
+from utils.early_stop import EarlyStopChecker
 
 
 def main():
@@ -101,7 +80,7 @@ def main():
 						help='directory containing the images selected during various active learning selection iterations')
 	parser.add_argument('--active-evaluation-skips', type=int, default=10,
 						help='evaluation interval (default: 1)')
-	parser.add_argument('--min-improvement', type=float, default=0.02,
+	parser.add_argument('--min-improvement', type=float, default=0.01,
 						help='evaluation interval (default: 1)')
 	parser.add_argument('--experiment-group', type=str, default='cityscape_active_evals',
 						help='root folder for saving experiments')
@@ -187,12 +166,12 @@ def main():
 
 		training_set.reset_replicated_training_set()
 
-		writer.add_scalar('active_evaluation/train_loss', train_loss / len(training_set), len(training_set))
-		writer.add_scalar('active_evaluation/val_loss', test_loss, len(training_set))
-		writer.add_scalar('active_evaluation/mIoU', mIoU, len(training_set))
-		writer.add_scalar('active_evaluation/Acc', Acc, len(training_set))
-		writer.add_scalar('active_evaluation/Acc_class', Acc_class, len(training_set))
-		writer.add_scalar('active_evaluation/fwIoU', FWIoU, len(training_set))
+		writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), len(training_set))
+		writer.add_scalar('active_loop/val_loss', test_loss, len(training_set))
+		writer.add_scalar('active_loop/mIoU', mIoU, len(training_set))
+		writer.add_scalar('active_loop/Acc', Acc, len(training_set))
+		writer.add_scalar('active_loop/Acc_class', Acc_class, len(training_set))
+		writer.add_scalar('active_loop/fwIoU', FWIoU, len(training_set))
 
 		summary.visualize_image(writer, args.dataset, visualizations[0], visualizations[1], visualizations[2], len(training_set))
 
