@@ -87,13 +87,14 @@ class ActiveSelectionMCDropout:
         weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
 
         map_ctr = 0
-        entropy_maps = []
-        base_images = []
+        # commented lines are for visualization and verification
+        # entropy_maps = []
+        # base_images = []
         for image_batch in tqdm(loader):
             image_batch = image_batch.cuda()
             for img_idx, entropy_map in enumerate(self._get_vote_entropy_for_batch(model, image_batch)):
-                base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
-                entropy_maps.append(entropy_map.cpu().numpy())
+                # base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
+                # entropy_maps.append(entropy_map.cpu().numpy())
                 score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(entropy_map.unsqueeze(
                     0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
                 map_ctr += 1
@@ -104,8 +105,9 @@ class ActiveSelectionMCDropout:
         score_maps = minmax_norm(score_maps)
 
         regions, _ = ActiveSelectionMCDropout._square_nms(score_maps, region_size, 20)
-        for i in range(len(regions)):
-            ActiveSelectionMCDropout._visualize_regions(base_images[i], entropy_maps[i], regions[i], region_size)
+
+        # for i in range(len(regions)):
+        #    ActiveSelectionMCDropout._visualize_regions(base_images[i], entropy_maps[i], regions[i], region_size)
 
     def get_vote_entropy_for_images(self, model, images):
 

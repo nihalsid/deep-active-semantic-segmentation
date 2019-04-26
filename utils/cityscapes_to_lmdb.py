@@ -7,6 +7,8 @@ from pathlib import Path
 from tqdm import tqdm
 import numpy as np
 
+CITYSCAPES_IGNORE_INDEX = 255
+
 
 def cityscapes_to_lmdb(root_path, split, lmdb_path):
 
@@ -14,9 +16,9 @@ def cityscapes_to_lmdb(root_path, split, lmdb_path):
     void_classes = [0, 1, 2, 3, 4, 5, 6, 9, 10, 14, 15, 16, 18, 29, 30, -1]
     valid_classes = [7, 8, 11, 12, 13, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 31, 32, 33]
     # class_names = ['unlabelled', 'road', 'sidewalk', 'building', 'wall', 'fence', 'pole', 'traffic_light', 'traffic_sign', 'vegetation', 'terrain', 'sky', 'person', 'rider', 'car', 'truck', 'bus', 'train', 'motorcycle', 'bicycle']
-    ignore_index = 255
+
     assert(len(valid_classes) == NUM_CLASSES)
-    class_map = dict(zip(valid_classes + void_classes, list(range(NUM_CLASSES)) + [ignore_index] * len(void_classes)))
+    class_map = dict(zip(valid_classes + void_classes, list(range(NUM_CLASSES)) + [CITYSCAPES_IGNORE_INDEX] * len(void_classes)))
     images_base = os.path.join(root_path, 'leftImg8bit', split)
     labels_base = os.path.join(root_path, 'gtFine_trainvaltest', 'gtFine', split)
     image_paths = glob.glob(os.path.join(images_base, '**', '*.png'), recursive=True)

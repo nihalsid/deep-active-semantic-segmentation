@@ -24,21 +24,11 @@ class ActiveCityscapes(cityscapes_base.CityscapesBase):
 
     def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
 
-        super(ActiveCityscapes, self).__init__(path, split)
-        self.path = path
-        self.split = split
-        self.crop_size = crop_size
-        self.base_size = base_size
-        self.overfit = overfit
+        super(ActiveCityscapes, self).__init__(path, base_size, crop_size, split, overfit)
+
         self.current_image_paths = []
         self.last_added_image_paths = []
         self.mode = Mode.ALL_BATCHES
-
-        if overfit:
-            self.image_paths = self.image_paths[:1]
-
-        if len(self.image_paths) == 0:
-            raise Exception("No images found in dataset directory")
 
         if self.split == 'train':
             self.current_image_paths = self.image_paths
@@ -82,25 +72,7 @@ class ActiveCityscapes(cityscapes_base.CityscapesBase):
         target = loaded_npy[:, :, 3]
 
         sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
-
-        retval = None
-
-        if self.overfit:
-            retval = self.transform_test(sample)
-
-        if self.split == 'train':
-            retval = self.transform_train(sample)
-
-        elif self.split == 'val':
-            retval = self.transform_val(sample)
-
-        elif self.split == 'test':
-            retval = self.transform_test(sample)
-
-        if retval is None:
-            raise Exception('Undefined split - should be either test/train/val')
-
-        return retval
+        return self.get_transformed_sample(sample)
 
     def replicate_training_set(self, factor):
         self.current_image_paths = self.current_image_paths * factor

@@ -3,8 +3,9 @@ from PIL import Image
 from torch.utils import data
 import glob
 from pathlib import Path
-import lmdb
 import pickle
+import os
+import constants
 from dataloaders.dataset import cityscapes_base
 
 
@@ -12,19 +13,7 @@ class Cityscapes(cityscapes_base.CityscapesBase):
 
     def __init__(self, path, base_size, crop_size, split, overfit=False):
 
-        super(Cityscapes, self).__init__(path, split)
-
-        self.path = path
-        self.split = split
-        self.crop_size = crop_size
-        self.base_size = base_size
-        self.overfit = overfit
-
-        if overfit:
-            self.image_paths = self.image_paths[:1]
-
-        if len(self.image_paths) == 0:
-            raise Exception("No images found in dataset directory")
+        super(Cityscapes, self).__init__(path, base_size, crop_size, split, overfit)
 
     def __len__(self):
         return len(self.image_paths)
@@ -41,25 +30,7 @@ class Cityscapes(cityscapes_base.CityscapesBase):
         target = loaded_npy[:, :, 3]
 
         sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
-
-        retval = None
-
-        if self.overfit:
-            retval = self.transform_test(sample)
-
-        if self.split == 'train':
-            retval = self.transform_train(sample)
-
-        elif self.split == 'val':
-            retval = self.transform_val(sample)
-
-        elif self.split == 'test':
-            retval = self.transform_test(sample)
-
-        if retval is None:
-            raise Exception('Undefined split - should be either test/train/val')
-
-        return retval
+        return self.get_transformed_sample(sample)
 
     def replicate_training_set(self, factor):
         self.image_paths = self.image_paths * factor
@@ -76,10 +47,10 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from dataloaders.utils import map_segmentation_to_colors
 
-    path = 'D:\\nihalsid\\DeeplabV3+\\datasets\\cityscapes'
+    path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
     crop_size = 513
     base_size = 513
-    split = 'test'
+    split = 'train'
 
     cityscapes_train = Cityscapes(path, base_size, crop_size, split)
     dataloader = DataLoader(cityscapes_train, batch_size=2, shuffle=True, num_workers=0)

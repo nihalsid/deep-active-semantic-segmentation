@@ -169,6 +169,7 @@ class FixScaleCropImageOnly(object):
         else:
             ow = self.crop_size
             oh = int(1.0 * h * ow / w)
+
         sample = sample.resize((ow, oh), Image.BILINEAR)
         # center crop
         w, h = sample.size
@@ -176,6 +177,24 @@ class FixScaleCropImageOnly(object):
         y1 = int(round((h - self.crop_size) / 2.))
         sample = sample.crop((x1, y1, x1 + self.crop_size, y1 + self.crop_size))
         return sample
+
+
+def invert_fix_scale_crop(label, output, region, crop_size):
+
+    h, w = label.shape
+
+    if w > h:
+        oh = crop_size
+        ow = int(1.0 * w * oh / h)
+    else:
+        ow = crop_size
+        oh = int(1.0 * h * ow / w)
+
+    x1 = int(round((ow - crop_size) / 2.))
+    y1 = int(round((oh - crop_size) / 2.))
+
+    b0, b1, b2, b3 = round((region[0] + y1) * (h / oh)), round((region[1] + x1) * (w / ow)), round(region[2] * (h / oh)), round(region[3] * (w / ow))
+    output[b0: b0 + b2, b1: b1 + b3] = label[b0: b0 + b2, b1: b1 + b3]
 
 
 class FixedResize(object):
