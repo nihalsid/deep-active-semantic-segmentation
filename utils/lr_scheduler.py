@@ -1,14 +1,15 @@
-##+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-## Created by: Hang Zhang
-## ECE Department, Rutgers University
-## Email: zhang.hang@rutgers.edu
-## Copyright (c) 2017
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Created by: Hang Zhang
+# ECE Department, Rutgers University
+# Email: zhang.hang@rutgers.edu
+# Copyright (c) 2017
 ##
-## This source code is licensed under the MIT-style license found in the
-## LICENSE file in the root directory of this source tree
-##+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# This source code is licensed under the MIT-style license found in the
+# LICENSE file in the root directory of this source tree
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 import math
+
 
 class LR_Scheduler(object):
     """Learning Rate Scheduler
@@ -27,6 +28,7 @@ class LR_Scheduler(object):
 
         iters_per_epoch: number of iterations per epoch
     """
+
     def __init__(self, mode, base_lr, num_epochs, iters_per_epoch=0,
                  lr_step=0, warmup_epochs=0):
         self.mode = mode

@@ -4,36 +4,36 @@ import torch
 
 def create_cityscapes_label_colormap():
 
-  return {
-      0: [128, 64, 128],
-      1: [244, 35, 232],
-      2: [70, 70, 70],
-      3: [102, 102, 156],
-      4: [190, 153, 153],
-      5: [153, 153, 153],
-      6: [250, 170, 30],
-      7: [220, 220, 0],
-      8: [107, 142, 35],
-      9: [152, 251, 152],
-      10: [70, 130, 180],
-      11: [220, 20, 60],
-      12: [255, 0, 0],
-      13: [0, 0, 142],
-      14: [0, 0, 70],
-      15: [0, 60, 100],
-      16: [0, 80, 100],
-      17: [0, 0, 230],
-      18: [119, 11, 32],
-      255: [255, 255, 255]
-  }
+    return {
+        0: [128, 64, 128],
+        1: [244, 35, 232],
+        2: [70, 70, 70],
+        3: [102, 102, 156],
+        4: [190, 153, 153],
+        5: [153, 153, 153],
+        6: [250, 170, 30],
+        7: [220, 220, 0],
+        8: [107, 142, 35],
+        9: [152, 251, 152],
+        10: [70, 130, 180],
+        11: [220, 20, 60],
+        12: [255, 0, 0],
+        13: [0, 0, 142],
+        14: [0, 0, 70],
+        15: [0, 60, 100],
+        16: [0, 80, 100],
+        17: [0, 0, 230],
+        18: [119, 11, 32],
+        255: [255, 255, 255]
+    }
 
 
 def get_colormap(dataset):
 
-	if dataset == 'cityscapes' or dataset == 'active_cityscapes':
-		return create_cityscapes_label_colormap()
+    if dataset == 'cityscapes' or dataset == 'active_cityscapes':
+        return create_cityscapes_label_colormap()
 
-	raise Exception('No colormap for dataset found')
+    raise Exception('No colormap for dataset found')
 
 
 def map_segmentations_to_colors(segmentations, dataset):
@@ -46,12 +46,12 @@ def map_segmentations_to_colors(segmentations, dataset):
 
 
 def map_segmentation_to_colors(segmentation, dataset):
-	colormap = get_colormap(dataset)
+    colormap = get_colormap(dataset)
 
-	colored_segmentation = np.zeros((segmentation.shape[0], segmentation.shape[1], 3))
+    colored_segmentation = np.zeros((segmentation.shape[0], segmentation.shape[1], 3))
 
-	for label in np.unique(segmentation).tolist():
-		colored_segmentation[segmentation == label, :] = colormap[label]
+    for label in np.unique(segmentation).tolist():
+        colored_segmentation[segmentation == label, :] = colormap[label]
 
-	colored_segmentation /= 255.0
-	return colored_segmentation
+    colored_segmentation /= 255.0
+    return colored_segmentation

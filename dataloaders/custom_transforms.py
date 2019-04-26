@@ -4,12 +4,14 @@ import numpy as np
 
 from PIL import Image, ImageOps, ImageFilter
 
+
 class Normalize(object):
     """Normalize a tensor image with mean and standard deviation.
     Args:
         mean (tuple): means for each channel.
         std (tuple): standard deviations for each channel.
     """
+
     def __init__(self, mean=(0., 0., 0.), std=(1., 1., 1.)):
         self.mean = mean
         self.std = std
@@ -47,6 +49,7 @@ class ToTensor(object):
 
 
 class RandomHorizontalFlip(object):
+
     def __call__(self, sample):
         img = sample['image']
         mask = sample['label']
@@ -59,13 +62,14 @@ class RandomHorizontalFlip(object):
 
 
 class RandomRotate(object):
+
     def __init__(self, degree):
         self.degree = degree
 
     def __call__(self, sample):
         img = sample['image']
         mask = sample['label']
-        rotate_degree = random.uniform(-1*self.degree, self.degree)
+        rotate_degree = random.uniform(-1 * self.degree, self.degree)
         img = img.rotate(rotate_degree, Image.BILINEAR)
         mask = mask.rotate(rotate_degree, Image.NEAREST)
 
@@ -74,6 +78,7 @@ class RandomRotate(object):
 
 
 class RandomGaussianBlur(object):
+
     def __call__(self, sample):
         img = sample['image']
         mask = sample['label']
@@ -86,6 +91,7 @@ class RandomGaussianBlur(object):
 
 
 class RandomScaleCrop(object):
+
     def __init__(self, base_size, crop_size, fill=0):
         self.base_size = base_size
         self.crop_size = crop_size
@@ -123,6 +129,7 @@ class RandomScaleCrop(object):
 
 
 class FixScaleCrop(object):
+
     def __init__(self, crop_size):
         self.crop_size = crop_size
 
@@ -150,6 +157,7 @@ class FixScaleCrop(object):
 
 
 class FixScaleCropImageOnly(object):
+
     def __init__(self, crop_size):
         self.crop_size = crop_size
 
@@ -171,6 +179,7 @@ class FixScaleCropImageOnly(object):
 
 
 class FixedResize(object):
+
     def __init__(self, size):
         self.size = (size, size)  # size: (h, w)
 
