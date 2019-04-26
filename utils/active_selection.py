@@ -1,7 +1,7 @@
 import constants
 import numpy as np
 import random
-from dataloaders.dataset import active_cityscapes
+from dataloaders.dataset import active_cityscapes, paths_dataset
 from models.sync_batchnorm.replicate import patch_replication_callback
 from models.deeplab import *
 import os
@@ -86,7 +86,7 @@ class ActiveSelectionMCDropout:
 		model.apply(turn_on_dropout)
 
 		score_maps = torch.cuda.FloatTensor(len(images), self.crop_size - region_size + 1, self.crop_size - region_size + 1)
-		loader = DataLoader(active_cityscapes.PathsDataset(self.env, images, self.crop_size), batch_size=self.batch_size, shuffle=False, num_workers=0)
+		loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.batch_size, shuffle=False, num_workers=0)
 		weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
 
 		map_ctr = 0
@@ -117,7 +117,7 @@ class ActiveSelectionMCDropout:
 				m.train()
 		model.apply(turn_on_dropout)
 
-		loader = DataLoader(active_cityscapes.PathsDataset(self.env, images, self.crop_size), batch_size=self.batch_size, shuffle=False, num_workers=0)
+		loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.batch_size, shuffle=False, num_workers=0)
 
 		entropies = []
 		for image_batch in tqdm(loader):
@@ -268,7 +268,6 @@ def test_nms_on_entropy_maps():
 	args = {
 		'base_size': 513,
 		'crop_size': 513,
-		'seed_set': '',
 		'seed_set': 'set_0.txt',
 		'batch_size': 12
 	}

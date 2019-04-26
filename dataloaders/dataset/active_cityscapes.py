@@ -3,16 +3,16 @@ import numpy as np
 from PIL import Image
 from torchvision import transforms
 from dataloaders import custom_transforms as tr
-from torch.utils import data
 import glob 
 from pathlib import Path
 import random
 import math
 from enum import Enum
 import torch
-import lmdb
 import pickle
 from utils.active_selection import ActiveSelectionMCDropout
+from dataloaders.dataset import cityscapes_base
+from torch.utils import data
 
 
 class Mode(Enum):
@@ -20,52 +20,16 @@ class Mode(Enum):
 	LAST_ADDED_BATCH = 1
 
 
-class PathsDataset(data.Dataset):
-
-		def __init__(self, env, paths, crop_size):
-
-			self.env = env
-			self.paths = paths
-			self.crop_size = crop_size
-
-
-		def __len__(self):
-			return len(self.paths)
-
-
-		def __getitem__(self, index):
-			
-			img_path = self.paths[index]
-			loaded_npy = None
-			with self.env.begin(write=False) as txn:
-				loaded_npy = pickle.loads(txn.get(img_path))
-			
-			image = loaded_npy[:, :, 0:3]
-			
-			composed_tr = transforms.Compose([
-				tr.FixScaleCropImageOnly(crop_size=self.crop_size),
-				transforms.ToTensor(),
-				transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-			])
-
-			return composed_tr(Image.fromarray(image))
-
-
-class ActiveCityscapes(data.Dataset):
-	
-	NUM_CLASSES = 19
+class ActiveCityscapes(cityscapes_base.CityscapesBase):
 	
 	def __init__(self, path, base_size, crop_size, split, init_set, overfit=False): 
 		
+		super(ActiveCityscapes, self).__init__(path, split)
 		self.path = path
 		self.split = split
 		self.crop_size = crop_size
 		self.base_size = base_size
 		self.overfit = overfit
-		self.env = lmdb.open(os.path.join(path, split + ".db"), subdir=False, readonly=True, lock=False, readahead=False, meminit=False)
-		self.image_paths = []
-		with self.env.begin(write=False) as txn:
-			self.image_paths = pickle.loads(txn.get(b'__keys__'))
 		self.current_image_paths = []
 		self.last_added_image_paths = []
 		self.mode = Mode.ALL_BATCHES 
@@ -164,41 +128,6 @@ class ActiveCityscapes(data.Dataset):
 	def count_expands_needed(self, batch_size):
 		total_unlabeled = len(self.remaining_image_paths)
 		return math.ceil(total_unlabeled / batch_size)
-
-
-	def transform_train(self, sample):
-
-		composed_transforms = transforms.Compose([
-			tr.RandomHorizontalFlip(),
-			tr.RandomScaleCrop(base_size=self.base_size, crop_size=self.crop_size, fill=255),
-			tr.RandomGaussianBlur(),
-			tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-			tr.ToTensor()
-		])
-
-		return composed_transforms(sample)
-
-
-	def transform_val(self, sample):
-		
-		composed_transforms = transforms.Compose([
-			tr.FixScaleCrop(crop_size=self.crop_size),
-			tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-			tr.ToTensor()
-		])
-
-		return composed_transforms(sample)
-	
-
-	def transform_test(self, sample):
-		
-		composed_transforms = transforms.Compose([
-			tr.FixScaleCrop(crop_size=self.crop_size),
-			tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-			tr.ToTensor()
-		])
-
-		return composed_transforms(sample)
 
 
 if __name__ == '__main__':

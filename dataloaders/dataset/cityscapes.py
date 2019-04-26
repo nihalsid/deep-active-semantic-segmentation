@@ -1,32 +1,25 @@
-import os
 import numpy as np
 from PIL import Image
-from torchvision import transforms
-from dataloaders import custom_transforms as tr
 from torch.utils import data
 import glob 
 from pathlib import Path
 import lmdb
 import pickle
+from dataloaders.dataset import cityscapes_base
 
 
-class Cityscapes(data.Dataset):
-	
-	NUM_CLASSES = 19
+class Cityscapes(cityscapes_base.CityscapesBase):
+
 	
 	def __init__(self, path, base_size, crop_size, split, overfit=False): 
 		
+		super(Cityscapes, self).__init__(path, split)
+
 		self.path = path
 		self.split = split
 		self.crop_size = crop_size
 		self.base_size = base_size
 		self.overfit = overfit
-
-		self.env = lmdb.open(os.path.join(path, split + ".db"), subdir=False, readonly=True, lock=False, readahead=False, meminit=False)
-
-		self.image_paths = []
-		with self.env.begin(write=False) as txn:
-			self.image_paths = pickle.loads(txn.get(b'__keys__'))
 		
 		if overfit:
 			self.image_paths = self.image_paths[:1]
@@ -81,43 +74,7 @@ class Cityscapes(data.Dataset):
 
 
 	def set_paths(self, pathlist):
-
 		self.image_paths = pathlist
-
-	
-	def transform_train(self, sample):
-
-		composed_transforms = transforms.Compose([
-			tr.RandomHorizontalFlip(),
-			tr.RandomScaleCrop(base_size=self.base_size, crop_size=self.crop_size, fill=255),
-			tr.RandomGaussianBlur(),
-			tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-			tr.ToTensor()
-		])
-
-		return composed_transforms(sample)
-
-
-	def transform_val(self, sample):
-		
-		composed_transforms = transforms.Compose([
-			tr.FixScaleCrop(crop_size=self.crop_size),
-			tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-			tr.ToTensor()
-		])
-
-		return composed_transforms(sample)
-	
-
-	def transform_test(self, sample):
-		
-		composed_transforms = transforms.Compose([
-			tr.FixScaleCrop(crop_size=self.crop_size),
-			tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-			tr.ToTensor()
-		])
-
-		return composed_transforms(sample)
 
 
 if __name__ == '__main__':
