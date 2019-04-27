@@ -16,11 +16,11 @@ from torch.utils import data
 import constants
 
 
-class ActiveCityscapes(cityscapes_base.ActiveCityscapesBase):
+class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
 
     def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
 
-        super(ActiveCityscapes, self).__init__(path, base_size, crop_size, split, overfit)
+        super(ActiveCityscapesImage, self).__init__(path, base_size, crop_size, split, overfit)
 
         if self.split == 'train':
             self.current_image_paths = self.image_paths
@@ -32,7 +32,7 @@ class ActiveCityscapes(cityscapes_base.ActiveCityscapesBase):
         else:
             self.current_image_paths = self.image_paths
             self.remaining_image_paths = []
-
+        self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
         self.last_added_image_paths = self.current_image_paths.copy()
 
     def __getitem__(self, index):
@@ -61,11 +61,7 @@ class ActiveCityscapes(cityscapes_base.ActiveCityscapesBase):
         self.last_added_image_paths = selected_samples
         for x in selected_samples:
             self.remaining_image_paths.remove(x)
-
-    def count_expands_needed(self, batch_size):
-        total_unlabeled = len(self.remaining_image_paths)
-        return math.ceil(total_unlabeled / batch_size)
-
+        self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
 
 if __name__ == '__main__':
     from torch.utils.data import DataLoader
@@ -76,7 +72,7 @@ if __name__ == '__main__':
     base_size = 513
     split = 'train'
 
-    cityscapes_train = ActiveCityscapes(path, base_size, crop_size, split, 'set_0.txt')
+    cityscapes_train = ActiveCityscapesImage(path, base_size, crop_size, split, 'set_0.txt')
     dataloader = DataLoader(cityscapes_train, batch_size=2, shuffle=True, num_workers=0)
 
     active_selector = ActiveSelectionMCDropout(19, cityscapes_train.env, crop_size, 2)

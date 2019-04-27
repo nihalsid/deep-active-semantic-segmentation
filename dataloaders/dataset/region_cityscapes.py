@@ -11,11 +11,11 @@ from dataloaders import custom_transforms as tr
 from dataloaders.dataset.cityscapes_base import Mode
 
 
-class RegionCityscapes(cityscapes_base.ActiveCityscapesBase):
+class ActiveCityscapesRegion(cityscapes_base.ActiveCityscapesBase):
 
     def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
 
-        super(RegionCityscapes, self).__init__(path, base_size, crop_size, split, overfit)
+        super(ActiveCityscapesRegion, self).__init__(path, base_size, crop_size, split, overfit)
         self.current_paths_to_regions_map = OrderedDict({})
         if self.split == 'train':
             with open(os.path.join(self.path, 'seed_sets', init_set), "r") as fptr:
@@ -30,16 +30,17 @@ class RegionCityscapes(cityscapes_base.ActiveCityscapesBase):
 
         self.last_added_paths_to_regions_map = self.current_paths_to_regions_map.copy()
         self._update_path_lists()
-
+        self.labeled_pixel_count = crop_size * crop_size * len(self.current_image_paths)
         print(f'# of current_image_paths = {len(self.current_image_paths)}')
 
-    def add_regions(self, new_regions):
+    def expand_training_set(self, new_regions, labeled_pixels):
         self.last_added_paths_to_regions_map = OrderedDict(new_regions)
         for path, regions in new_regions.items():
             if path in self.current_paths_to_regions_map:
                 self.current_paths_to_regions_map[path].extend(regions)
             else:
                 self.current_paths_to_regions_map[path] = regions
+        self.labeled_pixel_count += labeled_pixels
         self._update_path_lists()
 
     def _update_path_lists(self):
@@ -81,7 +82,6 @@ class RegionCityscapes(cityscapes_base.ActiveCityscapesBase):
         sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target_masked)}
         return self.get_transformed_sample(sample)
 
-
 if __name__ == "__main__":
 
     from torch.utils.data import DataLoader
@@ -93,8 +93,8 @@ if __name__ == "__main__":
     base_size = 513
     split = 'train'
 
-    cityscapes_train = RegionCityscapes(path, base_size, crop_size, split, 'set_dummy.txt')
-    cityscapes_train.add_regions({cityscapes_train.image_paths[50]: [(36, 100, 127, 127)]})
+    cityscapes_train = ActiveCityscapesRegion(path, base_size, crop_size, split, 'set_dummy.txt')
+    cityscapes_train.expand_training_set({cityscapes_train.image_paths[50]: [(36, 100, 127, 127)]}, 0)
     dataloader = DataLoader(cityscapes_train, batch_size=1, shuffle=False, num_workers=0)
 
     for i, sample in enumerate(dataloader):

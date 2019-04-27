@@ -52,12 +52,11 @@ class ActiveSelectionMCDropout:
     @staticmethod
     def square_nms(score_maps, region_size, max_selection_count):
 
-        score_maps[score_maps < 0.01] = 0
         ones_tensor = torch.cuda.FloatTensor(score_maps.shape[1], score_maps.shape[2]).fill_(0)
         selected_indices = [[] for x in range(score_maps.shape[0])]
         selection_count = 0
 
-        while score_maps.nonzero().size(0) != 0 and selection_count < max_selection_count:
+        while score_maps.max() > 0.01 and selection_count < max_selection_count:
 
             argmax = score_maps.view(-1).argmax()
             i, r, c = argmax // (score_maps.shape[1] * score_maps.shape[2]), (argmax //
@@ -101,14 +100,14 @@ class ActiveSelectionMCDropout:
 
         map_ctr = 0
         # commented lines are for visualization and verification
-        entropy_maps = []
-        base_images = []
+        # entropy_maps = []
+        # base_images = []
         for image_batch in tqdm(loader):
             image_batch = image_batch.cuda()
             for img_idx, entropy_map in enumerate(self._get_vote_entropy_for_batch(model, image_batch)):
                 ActiveSelectionMCDropout.suppress_labeled_entropy(entropy_map, existing_regions[map_ctr])
-                base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
-                entropy_maps.append(entropy_map.cpu().numpy())
+                # base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
+                # entropy_maps.append(entropy_map.cpu().numpy())
                 score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(entropy_map.unsqueeze(
                     0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
                 map_ctr += 1
@@ -122,8 +121,8 @@ class ActiveSelectionMCDropout:
         regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps, region_size, num_requested_indices)
         # print(f'Requested/Selected indices {num_requested_indices}/{num_selected_indices}')
 
-        for i in range(len(regions)):
-            ActiveSelectionMCDropout._visualize_regions(base_images[i], entropy_maps[i], regions[i], region_size)
+        # for i in range(len(regions)):
+        #    ActiveSelectionMCDropout._visualize_regions(base_images[i], entropy_maps[i], regions[i], region_size)
 
         new_regions = {}
         for i in range(len(regions)):
@@ -240,10 +239,10 @@ def test_entropy_map_for_images():
 
     args = dotdict(args)
     dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
-    train_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=args.base_size,
-                                                   crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
-    val_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=args.base_size,
-                                                 crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+    val_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                      crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
     model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False, mc_dropout=True)
 
     model = torch.nn.DataParallel(model, device_ids=[0])
@@ -293,10 +292,10 @@ def test_nms_on_entropy_maps():
 
     args = dotdict(args)
     dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
-    train_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=args.base_size,
-                                                   crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
-    val_set = active_cityscapes.ActiveCityscapes(path=dataset_path, base_size=args.base_size,
-                                                 crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+    val_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                      crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
     model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False, mc_dropout=True)
 
     model = torch.nn.DataParallel(model, device_ids=[0])
@@ -329,8 +328,8 @@ def test_create_region_maps_with_region_cityscapes():
     args = dotdict(args)
     dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
 
-    train_set = region_cityscapes.RegionCityscapes(path=dataset_path, base_size=args.base_size,
-                                                   crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+    train_set = region_cityscapes.ActiveCityscapesRegion(path=dataset_path, base_size=args.base_size,
+                                                         crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
 
     model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False, mc_dropout=True)
 
@@ -347,12 +346,16 @@ def test_create_region_maps_with_region_cityscapes():
     # ensure that the loaded model is not crap
     # validation(model, Data Loader(train_set, batch_size=2, shuffle=False), args)
 
+    region_size = 127
     active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
     train_set.image_paths = train_set.image_paths[:3]
-    new_regions = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), 127, 1)[0]
-    train_set.add_regions(new_regions)
-    new_regions = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), 127, 1)[0]
-    train_set.add_regions(new_regions)
+    print(train_set.get_fraction_of_labeled_data())
+    new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
+    train_set.expand_training_set(new_regions, counts * region_size * region_size)
+    print(train_set.get_fraction_of_labeled_data())
+    new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
+    train_set.expand_training_set(new_regions, counts * region_size * region_size)
+    print(train_set.get_fraction_of_labeled_data())
 
     dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
     for i, sample in enumerate(dataloader):

@@ -116,3 +116,6 @@ class ActiveCityscapesBase(CityscapesBase):
     def reset_replicated_training_set(self):
         self.current_image_paths = list(set(self.current_image_paths))
         self.last_added_image_paths = list(set(self.last_added_image_paths))
+
+    def get_fraction_of_labeled_data(self):
+        return self.labeled_pixel_count / (len(self.image_paths) * self.crop_size * self.crop_size)

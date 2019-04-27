@@ -28,11 +28,11 @@ class Trainer(object):
         self.mc_dropout = mc_dropout
         self.train_loader, self.val_loader, self.test_loader, self.nclass = dataloaders
 
-    def setup_saver_and_summary(self, num_current_labeled_samples, samples, experiment_group=None):
+    def setup_saver_and_summary(self, num_current_labeled_samples, samples, experiment_group=None, regions=None):
 
         self.saver = ActiveSaver(self.args, num_current_labeled_samples, experiment_group=experiment_group)
         self.saver.save_experiment_config()
-        self.saver.save_active_selections(samples)
+        self.saver.save_active_selections(samples, regions)
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
 
@@ -188,8 +188,8 @@ def main():
                         help='backbone name (default: resnet)')
     parser.add_argument('--out-stride', type=int, default=16,
                         help='network output stride (default: 8)')
-    parser.add_argument('--dataset', type=str, default='active_cityscapes',
-                        choices=['pascal', 'coco', 'active_cityscapes'],
+    parser.add_argument('--dataset', type=str, default='active_cityscapes_image',
+                        choices=['active_cityscapes_image', 'active_cityscapes_region'],
                         help='dataset name (default: active_cityscapes)')
     parser.add_argument('--use-sbd', action='store_true', default=False,
                                             help='whether to use SBD dataset (default: False)')
@@ -258,10 +258,15 @@ def main():
     parser.add_argument('--active-train-mode', type=str, default='scratch',
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
     parser.add_argument('--active-selection-mode', type=str, default='random', choices=['random', 'variance'], help='method to select new samples')
+    parser.add_argument('--active-region-size', type=int, default=127, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='evaluation interval (default: 1)')
 
     args = parser.parse_args()
+
+    if args.active_selection_mode == "random":
+        assert args.dataset == 'active_cityscapes_image', "For random mode only images supported, not regions"
+
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     if args.cuda:
         try:
@@ -328,7 +333,7 @@ def main():
 
     active_selector = ActiveSelectionMCDropout(training_set.NUM_CLASSES, training_set.env, args.crop_size, args.batch_size)
 
-    total_active_selection_iterations = min(training_set.count_expands_needed(args.active_batch_size), args.max_iterations)
+    total_active_selection_iterations = min(len(training_set.image_paths) // args.active_batch_size - 1, args.max_iterations)
 
     for i in range(args.resume):
         training_set.expand_training_set(active_selection.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
@@ -345,9 +350,15 @@ def main():
 
     for selection_iter in range(args.resume, total_active_selection_iterations):
 
-        print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d} [{len(training_set):04d}/{len(training_set.remaining_image_paths):04d}/{training_set.count_expands_needed(args.active_batch_size):03d}]')
+        print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d}')
 
-        trainer.setup_saver_and_summary(len(training_set.current_image_paths), training_set.current_image_paths)
+        if args.dataset == 'active_cityscapes_image':
+            trainer.setup_saver_and_summary(len(training_set.current_image_paths), training_set.current_image_paths)
+        elif args.dataset == 'active_cityscapes_region':
+            trainer.setup_saver_and_summary(len(training_set.current_image_paths), training_set.current_image_paths, regions=[
+                                            training_set.current_paths_to_regions_map[x] for x in training_set.current_image_paths])
+        else:
+            raise NotImplementedError
 
         if args.active_train_mode == 'scratch':
             trainer.initialize()
@@ -363,12 +374,14 @@ def main():
 
         training_set.reset_replicated_training_set()
 
-        writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), len(training_set.current_image_paths))
-        writer.add_scalar('active_loop/val_loss', test_loss, len(training_set.current_image_paths))
-        writer.add_scalar('active_loop/mIoU', mIoU, len(training_set.current_image_paths))
-        writer.add_scalar('active_loop/Acc', Acc, len(training_set.current_image_paths))
-        writer.add_scalar('active_loop/Acc_class', Acc_class, len(training_set.current_image_paths))
-        writer.add_scalar('active_loop/fwIoU', FWIoU, len(training_set.current_image_paths))
+        fraction_of_data_labeled = round(training_set.get_fraction_of_labeled_data())
+
+        writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), fraction_of_data_labeled)
+        writer.add_scalar('active_loop/val_loss', test_loss, fraction_of_data_labeled)
+        writer.add_scalar('active_loop/mIoU', mIoU, fraction_of_data_labeled)
+        writer.add_scalar('active_loop/Acc', Acc, fraction_of_data_labeled)
+        writer.add_scalar('active_loop/Acc_class', Acc_class, fraction_of_data_labeled)
+        writer.add_scalar('active_loop/fwIoU', FWIoU, fraction_of_data_labeled)
 
         summary.visualize_image(writer, args.dataset, visualizations[0], visualizations[1], visualizations[2], len(training_set.current_image_paths))
 
@@ -378,8 +391,16 @@ def main():
             training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
         elif args.active_selection_mode == 'variance':
             trainer.model.eval()
-            training_set.expand_training_set(active_selector.get_vote_entropy_for_images(
-                trainer.model, training_set.remaining_image_paths), args.active_batch_size)
+            if args.dataset == 'active_cityscapes_image':
+                training_set.expand_training_set(active_selector.get_vote_entropy_for_images(
+                    trainer.model, training_set.remaining_image_paths), args.active_batch_size)
+            elif args.dataset == 'active_cityscapes_region':
+                regions, counts = active_selector.create_region_maps(
+                    trainer.model, training_set.image_paths, training_set.get_existing_region_maps(), args.active_region_size, args.active_batch_size)
+                print(f'Got {counts}/{math.ceil(args.active_batch_size * args.crop_size * args.crop_size / (args.active_region_size * args.active_region_size))} regions')
+                training_set.expand_training_set(regions, counts * args.active_region_size * args.active_region_size)
+            else:
+                raise NotImplementedError
         else:
             raise NotImplementedError
 

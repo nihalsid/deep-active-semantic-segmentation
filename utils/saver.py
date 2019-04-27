@@ -65,12 +65,18 @@ class ActiveSaver(Saver):
             filename = os.path.join(self.experiment_dir, 'best.pth.tar')
             torch.save(state, filename)
 
-    def save_active_selections(self, paths):
+    def save_active_selections(self, paths, regions):
 
         filename = os.path.join(self.experiment_dir, 'selections.txt')
         with open(filename, 'w') as fptr:
-            for p in paths:
-                fptr.write(p.decode('utf-8') + '\n')
+            if regions:
+
+                for p, region in zip(paths, regions):
+                    region_line = ",".join([",".join([str(i) for i in r]) for r in region])
+                    fptr.write(p.decode('utf-8') + ',' + region_line + '\n')
+            else:
+                for p in paths:
+                    fptr.write(p.decode('utf-8') + '\n')
 
 
 class PassiveSaver(Saver):
