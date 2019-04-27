@@ -4,6 +4,7 @@ from torch.utils import data
 import lmdb
 import pickle
 import os
+from enum import Enum
 
 
 class CityscapesBase(data.Dataset):
@@ -80,3 +81,38 @@ class CityscapesBase(data.Dataset):
             raise Exception('Undefined split - should be either test/train/val')
 
         return retval
+
+
+class Mode(Enum):
+    ALL_BATCHES = 0
+    LAST_ADDED_BATCH = 1
+
+
+class ActiveCityscapesBase(CityscapesBase):
+
+    def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
+
+        super(ActiveCityscapesBase, self).__init__(path, base_size, crop_size, split, overfit)
+        self.current_image_paths = []
+        self.last_added_image_paths = []
+        self.mode = Mode.ALL_BATCHES
+
+    def set_mode_all(self):
+        self.mode = Mode.ALL_BATCHES
+
+    def set_mode_last(self):
+        self.mode = Mode.LAST_ADDED_BATCH
+
+    def __len__(self):
+        if self.mode == Mode.ALL_BATCHES:
+            return len(self.current_image_paths)
+        else:
+            return len(self.last_added_image_paths)
+
+    def replicate_training_set(self, factor):
+        self.current_image_paths = self.current_image_paths * factor
+        self.last_added_image_paths = self.last_added_image_paths * factor
+
+    def reset_replicated_training_set(self):
+        self.current_image_paths = list(set(self.current_image_paths))
+        self.last_added_image_paths = list(set(self.last_added_image_paths))

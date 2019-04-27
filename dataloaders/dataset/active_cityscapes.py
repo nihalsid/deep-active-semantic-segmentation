@@ -7,28 +7,20 @@ import glob
 from pathlib import Path
 import random
 import math
-from enum import Enum
 import torch
 import pickle
 from utils.active_selection import ActiveSelectionMCDropout
 from dataloaders.dataset import cityscapes_base
+from dataloaders.dataset.cityscapes_base import Mode
 from torch.utils import data
+import constants
 
 
-class Mode(Enum):
-    ALL_BATCHES = 0
-    LAST_ADDED_BATCH = 1
-
-
-class ActiveCityscapes(cityscapes_base.CityscapesBase):
+class ActiveCityscapes(cityscapes_base.ActiveCityscapesBase):
 
     def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
 
         super(ActiveCityscapes, self).__init__(path, base_size, crop_size, split, overfit)
-
-        self.current_image_paths = []
-        self.last_added_image_paths = []
-        self.mode = Mode.ALL_BATCHES
 
         if self.split == 'train':
             self.current_image_paths = self.image_paths
@@ -42,18 +34,6 @@ class ActiveCityscapes(cityscapes_base.CityscapesBase):
             self.remaining_image_paths = []
 
         self.last_added_image_paths = self.current_image_paths.copy()
-
-    def set_mode_all(self):
-        self.mode = Mode.ALL_BATCHES
-
-    def set_mode_last(self):
-        self.mode = Mode.LAST_ADDED_BATCH
-
-    def __len__(self):
-        if self.mode == Mode.ALL_BATCHES:
-            return len(self.current_image_paths)
-        else:
-            return len(self.last_added_image_paths)
 
     def __getitem__(self, index):
 
@@ -74,14 +54,6 @@ class ActiveCityscapes(cityscapes_base.CityscapesBase):
         sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
         return self.get_transformed_sample(sample)
 
-    def replicate_training_set(self, factor):
-        self.current_image_paths = self.current_image_paths * factor
-        self.last_added_image_paths = self.last_added_image_paths * factor
-
-    def reset_replicated_training_set(self):
-        self.current_image_paths = list(set(self.current_image_paths))
-        self.last_added_image_paths = list(set(self.last_added_image_paths))
-
     def expand_training_set(self, scores, batch_size):
         num_new_samples = min(batch_size, len(scores))
         selected_samples = list(zip(*sorted(zip(scores, self.remaining_image_paths), key=lambda x: x[0], reverse=True)))[1][:num_new_samples]
@@ -99,7 +71,7 @@ if __name__ == '__main__':
     from torch.utils.data import DataLoader
     import matplotlib.pyplot as plt
     from dataloaders.utils import map_segmentation_to_colors
-    path = 'D:\\nihalsid\\DeeplabV3+\\datasets\\cityscapes'
+    path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
     crop_size = 513
     base_size = 513
     split = 'train'
@@ -107,9 +79,9 @@ if __name__ == '__main__':
     cityscapes_train = ActiveCityscapes(path, base_size, crop_size, split, 'set_0.txt')
     dataloader = DataLoader(cityscapes_train, batch_size=2, shuffle=True, num_workers=0)
 
-    active_selector = ActiveSelectionMCDropout(19, crop_size, 2, 2, True)
+    active_selector = ActiveSelectionMCDropout(19, cityscapes_train.env, crop_size, 2)
     print('Before Expansion', len(dataloader))
-    #cityscapes_train.expand_training_set(active_selector.get_random_uncertainity(cityscapes_train.current_image_paths), 10)
+    cityscapes_train.expand_training_set(active_selector.get_random_uncertainity(cityscapes_train.current_image_paths), 10)
     print('After Expansion', len(dataloader))
 
     for i, sample in enumerate(dataloader, 0):

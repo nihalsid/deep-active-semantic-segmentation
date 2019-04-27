@@ -8,55 +8,50 @@ from utils.cityscapes_to_lmdb import CITYSCAPES_IGNORE_INDEX
 import constants
 import os
 from dataloaders import custom_transforms as tr
+from dataloaders.dataset.cityscapes_base import Mode
 
 
-class RegionCityscapes(cityscapes_base.CityscapesBase):
+class RegionCityscapes(cityscapes_base.ActiveCityscapesBase):
 
     def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
 
         super(RegionCityscapes, self).__init__(path, base_size, crop_size, split, overfit)
-        self.mode = active_cityscapes.Mode.ALL_BATCHES
-        self.current_paths_to_regions = OrderedDict({})
+        self.current_paths_to_regions_map = OrderedDict({})
         if self.split == 'train':
-
             with open(os.path.join(self.path, 'seed_sets', init_set), "r") as fptr:
                 for path in fptr.readlines():
                     if path is not '':
                         path = u'{}'.format(path.strip()).encode('ascii')
-                        self.current_paths_to_regions[path] = [(0, 0, crop_size, crop_size)]
-                print(f'# of current_image_paths = {len(self.current_paths_to_regions.keys())}')
+                        self.current_paths_to_regions_map[path] = [(0, 0, crop_size, crop_size)]
 
         else:
             for path in self.image_paths:
-                self.current_paths_to_regions[path] = [(0, 0, crop_size, crop_size)]
+                self.current_paths_to_regions_map[path] = [(0, 0, crop_size, crop_size)]
 
-        self.last_added_paths_to_regions = self.current_paths_to_regions.copy()
+        self.last_added_paths_to_regions_map = self.current_paths_to_regions_map.copy()
+        self._update_path_lists()
+
+        print(f'# of current_image_paths = {len(self.current_image_paths)}')
 
     def add_regions(self, new_regions):
-        self.last_added_paths_to_regions = OrderedDict(new_regions)
+        self.last_added_paths_to_regions_map = OrderedDict(new_regions)
         for path, regions in new_regions.items():
-            if path in self.current_paths_to_regions:
-                self.current_paths_to_regions[path].extend(regions)
+            if path in self.current_paths_to_regions_map:
+                self.current_paths_to_regions_map[path].extend(regions)
             else:
-                self.current_paths_to_regions[path] = regions
+                self.current_paths_to_regions_map[path] = regions
+        self._update_path_lists()
 
-    def set_mode_all(self):
-        self.mode = active_cityscapes.Mode.ALL_BATCHES
-
-    def set_mode_last(self):
-        self.mode = active_cityscapes.Mode.LAST_ADDED_BATCH
-
-    def __len__(self):
-        if self.mode == active_cityscapes.Mode.ALL_BATCHES:
-            return len(self.current_paths_to_regions.keys())
-        else:
-            return len(self.last_added_paths_to_regions.keys())
+    def _update_path_lists(self):
+        assert len(self.current_image_paths) == len(list(set(self.current_image_paths))), "updating expanded list"
+        self.current_image_paths = list(self.current_paths_to_regions_map.keys())
+        self.last_added_image_paths = list(self.last_added_paths_to_regions_map.keys())
 
     def get_existing_region_maps(self):
         regions = []
         for path in self.image_paths:
-            if path in self.current_paths_to_regions:
-                regions.append(self.current_paths_to_regions[path])
+            if path in self.current_paths_to_regions_map:
+                regions.append(self.current_paths_to_regions_map[path])
             else:
                 regions.append([])
         return regions
@@ -67,9 +62,9 @@ class RegionCityscapes(cityscapes_base.CityscapesBase):
         regions = None
 
         if self.mode == active_cityscapes.Mode.ALL_BATCHES:
-            img_path, regions = list(self.current_paths_to_regions.items())[index]
+            img_path, regions = self.current_image_paths[index], self.current_paths_to_regions_map[self.current_image_paths[index]]
         else:
-            img_path, regions = list(self.last_added_paths_to_regions.items())[index]
+            img_path, regions = self.last_added_paths[index], self.last_added_paths_to_regions_map[self.last_added_paths[index]]
 
         loaded_npy = None
         with self.env.begin(write=False) as txn:
