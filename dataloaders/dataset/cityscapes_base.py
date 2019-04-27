@@ -31,8 +31,9 @@ class CityscapesBase(data.Dataset):
     def transform_train(self, sample):
 
         composed_transforms = transforms.Compose([
+            tr.FixScaleCrop(crop_size=self.crop_size),
             tr.RandomHorizontalFlip(),
-            tr.RandomScaleCrop(base_size=self.base_size, crop_size=self.crop_size, fill=255),
+            #tr.RandomScaleCrop(base_size=self.base_size, crop_size=self.crop_size, fill=255),
             tr.RandomGaussianBlur(),
             tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             tr.ToTensor()

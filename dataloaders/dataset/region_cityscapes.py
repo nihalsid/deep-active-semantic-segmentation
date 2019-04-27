@@ -17,7 +17,6 @@ class RegionCityscapes(cityscapes_base.CityscapesBase):
         super(RegionCityscapes, self).__init__(path, base_size, crop_size, split, overfit)
         self.mode = active_cityscapes.Mode.ALL_BATCHES
         self.current_paths_to_regions = OrderedDict({})
-
         if self.split == 'train':
 
             with open(os.path.join(self.path, 'seed_sets', init_set), "r") as fptr:
@@ -33,6 +32,14 @@ class RegionCityscapes(cityscapes_base.CityscapesBase):
 
         self.last_added_paths_to_regions = self.current_paths_to_regions.copy()
 
+    def add_regions(self, new_regions):
+        self.last_added_paths_to_regions = OrderedDict(new_regions)
+        for path, regions in new_regions.items():
+            if path in self.current_paths_to_regions:
+                self.current_paths_to_regions[path].extend(regions)
+            else:
+                self.current_paths_to_regions[path] = regions
+
     def set_mode_all(self):
         self.mode = active_cityscapes.Mode.ALL_BATCHES
 
@@ -44,6 +51,15 @@ class RegionCityscapes(cityscapes_base.CityscapesBase):
             return len(self.current_paths_to_regions.keys())
         else:
             return len(self.last_added_paths_to_regions.keys())
+
+    def get_existing_region_maps(self):
+        regions = []
+        for path in self.image_paths:
+            if path in self.current_paths_to_regions:
+                regions.append(self.current_paths_to_regions[path])
+            else:
+                regions.append([])
+        return regions
 
     def __getitem__(self, index):
 
@@ -82,10 +98,11 @@ if __name__ == "__main__":
     base_size = 513
     split = 'train'
 
-    cityscapes_train = RegionCityscapes(path, base_size, crop_size, split, 'set_0.txt')
-    dataloader = DataLoader(cityscapes_train, batch_size=2, shuffle=True, num_workers=0)
+    cityscapes_train = RegionCityscapes(path, base_size, crop_size, split, 'set_dummy.txt')
+    cityscapes_train.add_regions({cityscapes_train.image_paths[50]: [(36, 100, 127, 127)]})
+    dataloader = DataLoader(cityscapes_train, batch_size=1, shuffle=False, num_workers=0)
 
-    for i, sample in enumerate(dataloader, 0):
+    for i, sample in enumerate(dataloader):
         for j in range(sample['image'].size()[0]):
             image = sample['image'].numpy()
             gt = sample['label'].numpy()
@@ -97,8 +114,5 @@ if __name__ == "__main__":
             plt.imshow(image_unnormalized)
             plt.subplot(212)
             plt.imshow(gt_colored)
-
-        if i == 1:
-            break
 
     plt.show(block=True)
