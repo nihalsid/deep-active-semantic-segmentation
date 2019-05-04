@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 import torch
 from dataloaders.utils import map_segmentation_to_colors
 from scipy import stats
+import math
 
 
 class ActiveSelectionMCDropout:
@@ -51,13 +52,14 @@ class ActiveSelectionMCDropout:
 
     @staticmethod
     def square_nms(score_maps, region_size, max_selection_count):
-
-        ones_tensor = torch.cuda.FloatTensor(score_maps.shape[1], score_maps.shape[2]).fill_(0)
+        import time
+        ones_tensor = torch.FloatTensor(score_maps.shape[1], score_maps.shape[2]).fill_(0)
         selected_indices = [[] for x in range(score_maps.shape[0])]
+
+        tbar = tqdm(list(range(math.ceil(max_selection_count))), desc='NMS')
+
         selection_count = 0
-
-        while score_maps.max() > 0.01 and selection_count < max_selection_count:
-
+        for iter_idx in tbar:
             argmax = score_maps.view(-1).argmax()
             i, r, c = argmax // (score_maps.shape[1] * score_maps.shape[2]), (argmax //
                                                                               score_maps.shape[2]) % score_maps.shape[1], argmax % score_maps.shape[2]
@@ -71,6 +73,9 @@ class ActiveSelectionMCDropout:
             c1 = min(score_maps.shape[2], c + region_size)
             zero_out_mask[r0:r1, c0:c1] = 1
             score_maps[i, zero_out_mask] = 0
+
+            if score_maps.max() < 0.1:
+                break
 
         return selected_indices, selection_count
 
@@ -100,29 +105,29 @@ class ActiveSelectionMCDropout:
 
         map_ctr = 0
         # commented lines are for visualization and verification
-        # entropy_maps = []
-        # base_images = []
+        entropy_maps = []
+        base_images = []
         for image_batch in tqdm(loader):
             image_batch = image_batch.cuda()
             for img_idx, entropy_map in enumerate(self._get_vote_entropy_for_batch(model, image_batch)):
                 ActiveSelectionMCDropout.suppress_labeled_entropy(entropy_map, existing_regions[map_ctr])
-                # base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
-                # entropy_maps.append(entropy_map.cpu().numpy())
+                base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
+                entropy_maps.append(entropy_map.cpu().numpy())
                 score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(entropy_map.unsqueeze(
                     0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
                 map_ctr += 1
 
         min_val = score_maps.min()
         max_val = score_maps.max()
-        minmax_norm = lambda x: (x - min_val) / (max_val - min_val)
-        score_maps = minmax_norm(score_maps)
+        minmax_norm = lambda x: x.add_(min_val).mul_(1.0 / (max_val - min_val))
+        minmax_norm(score_maps)
 
         num_requested_indices = (selection_size * self.crop_size * self.crop_size) / (region_size * region_size)
-        regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps, region_size, num_requested_indices)
+        regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps.cpu(), region_size, num_requested_indices)
         # print(f'Requested/Selected indices {num_requested_indices}/{num_selected_indices}')
 
-        # for i in range(len(regions)):
-        #    ActiveSelectionMCDropout._visualize_regions(base_images[i], entropy_maps[i], regions[i], region_size)
+        for i in range(len(regions)):
+            ActiveSelectionMCDropout._visualize_regions(base_images[i], entropy_maps[i], regions[i], region_size)
 
         new_regions = {}
         for i in range(len(regions)):
@@ -270,12 +275,14 @@ def test_nms():
 
     region_size = 127
     weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
-    score_maps = torch.stack([torch.nn.functional.conv2d(torch.from_numpy(img_0).cuda().unsqueeze(0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze(
+    score_maps = torch.cuda.FloatTensor(500, 386, 386)
+    score_maps[:2, :, :] = torch.stack([torch.nn.functional.conv2d(torch.from_numpy(img_0).cuda().unsqueeze(0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze(
     ).squeeze(), torch.nn.functional.conv2d(torch.from_numpy(img_1).cuda().unsqueeze(0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()])
     min_val = score_maps.min()
     max_val = score_maps.max()
-    minmax_norm = lambda x: (x - min_val) / (max_val - min_val)
-    regions, _ = ActiveSelectionMCDropout._square_nms(minmax_norm(score_maps), region_size, (512 * 512) // (region_size * region_size))
+    minmax_norm = lambda x: x.add_(min_val).mul_(1.0 / (max_val - min_val))
+    minmax_norm(score_maps)
+    regions, _ = ActiveSelectionMCDropout.square_nms(score_maps.cpu(), region_size, (512 * 512) // (region_size * region_size))
     ActiveSelectionMCDropout._visualize_regions(images[0], images[0], regions[0], region_size)
     ActiveSelectionMCDropout._visualize_regions(images[0], images[1], regions[1], region_size)
     print(regions)
@@ -353,9 +360,9 @@ def test_create_region_maps_with_region_cityscapes():
     new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
     train_set.expand_training_set(new_regions, counts * region_size * region_size)
     print(train_set.get_fraction_of_labeled_data())
-    new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
-    train_set.expand_training_set(new_regions, counts * region_size * region_size)
-    print(train_set.get_fraction_of_labeled_data())
+    #new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
+    #train_set.expand_training_set(new_regions, counts * region_size * region_size)
+    # print(train_set.get_fraction_of_labeled_data())
 
     dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
     for i, sample in enumerate(dataloader):
@@ -375,4 +382,5 @@ def test_create_region_maps_with_region_cityscapes():
 
 if __name__ == '__main__':
     # test_entropy_map_for_images()
+    # test_nms()
     test_create_region_maps_with_region_cityscapes()

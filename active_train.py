@@ -352,10 +352,12 @@ def main():
 
         print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d}')
 
+        fraction_of_data_labeled = round(training_set.get_fraction_of_labeled_data() * 100)
+
         if args.dataset == 'active_cityscapes_image':
-            trainer.setup_saver_and_summary(len(training_set.current_image_paths), training_set.current_image_paths)
+            trainer.setup_saver_and_summary(fraction_of_data_labeled, training_set.current_image_paths)
         elif args.dataset == 'active_cityscapes_region':
-            trainer.setup_saver_and_summary(len(training_set.current_image_paths), training_set.current_image_paths, regions=[
+            trainer.setup_saver_and_summary(fraction_of_data_labeled, training_set.current_image_paths, regions=[
                                             training_set.current_paths_to_regions_map[x] for x in training_set.current_image_paths])
         else:
             raise NotImplementedError
@@ -373,8 +375,6 @@ def main():
             test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(epoch)
 
         training_set.reset_replicated_training_set()
-
-        fraction_of_data_labeled = round(training_set.get_fraction_of_labeled_data())
 
         writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), fraction_of_data_labeled)
         writer.add_scalar('active_loop/val_loss', test_loss, fraction_of_data_labeled)
