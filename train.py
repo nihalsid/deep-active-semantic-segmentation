@@ -30,8 +30,8 @@ class Trainer(object):
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
 
-        kwargs = {'num_workers': args.workers, 'pin_memory': True}
-        self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(
+        kwargs = {'pin_memory': True}
+        _, self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(
             args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
 
         model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn)
