@@ -63,6 +63,14 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
             self.remaining_image_paths.remove(x)
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
 
+    def expand_training_set(self, paths):
+        self.current_image_paths.extend(paths)
+        self.last_added_image_paths = paths
+        for x in paths:
+            self.remaining_image_paths.remove(x)
+        self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
+
+
 if __name__ == '__main__':
     from torch.utils.data import DataLoader
     import matplotlib.pyplot as plt

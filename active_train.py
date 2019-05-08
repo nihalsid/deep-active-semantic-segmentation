@@ -14,7 +14,7 @@ from utils.calculate_weights import calculate_weights_labels
 from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver, ActiveSaver
 from utils.summaries import TensorboardSummary
-from utils.active_selection import ActiveSelectionMCDropout
+from utils.active_selection import get_active_selection_class
 from utils.metrics import Evaluator
 import constants
 import sys
@@ -257,7 +257,7 @@ def main():
                         help='batch size queried from oracle')
     parser.add_argument('--active-train-mode', type=str, default='scratch',
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
-    parser.add_argument('--active-selection-mode', type=str, default='random', choices=['random', 'variance'], help='method to select new samples')
+    parser.add_argument('--active-selection-mode', type=str, default='random', choices=['random', 'variance', 'coreset'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=127, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='evaluation interval (default: 1)')
@@ -308,7 +308,7 @@ def main():
     if args.checkname is None:
         args.checkname = 'deeplab-' + str(args.backbone)
 
-    mc_dropout = True
+    mc_dropout = args.active_selection_mode == 'variance'
 
     print()
     print(args)
@@ -331,7 +331,7 @@ def main():
     trainer = Trainer(args, dataloaders, mc_dropout)
     trainer.initialize()
 
-    active_selector = ActiveSelectionMCDropout(training_set.NUM_CLASSES, training_set.env, args.crop_size, args.batch_size)
+    active_selector = get_active_selection_class(args.active_selection_mode, training_set.NUM_CLASSES, training_set.env, args.crop_size, args.batch_size)
 
     total_active_selection_iterations = min(len(training_set.image_paths) // args.active_batch_size - 1, args.max_iterations)
 
@@ -401,6 +401,11 @@ def main():
                 training_set.expand_training_set(regions, counts * args.active_region_size * args.active_region_size)
             else:
                 raise NotImplementedError
+        elif args.active_selection_mode == 'coreset':
+            trainer.model.eval()
+            assert args.dataset == 'active_cityscapes_image', 'only images supported for coreset approach'
+            training_set.expand_training_set(active_selector.get_k_center_greedy_selections(
+                args.active_batch_size, trainer.model, training_set.remaining_image_paths, training_set.current_image_paths))
         else:
             raise NotImplementedError
 

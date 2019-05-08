@@ -43,9 +43,9 @@ class Decoder(nn.Module):
         low_level_feat = self.relu(low_level_feat)
 
         x = F.interpolate(x, low_level_feat.size()[2:], mode='bilinear', align_corners=True)
-        x = torch.cat((x, low_level_feat), dim=1)
-        x = self.last_conv(x)
-        return x
+        second_to_last_features = torch.cat((x, low_level_feat), dim=1)
+        x = self.last_conv(second_to_last_features)
+        return x, second_to_last_features
 
     def _init_weight(self):
 

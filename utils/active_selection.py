@@ -11,15 +11,78 @@ import torch
 from dataloaders.utils import map_segmentation_to_colors
 from scipy import stats
 import math
+from sklearn.metrics import pairwise_distances
 
 
-class ActiveSelectionMCDropout:
+def get_active_selection_class(active_selection_method, dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size):
+    if active_selection_method == 'coreset':
+        return ActiveSelectionCoreSet(dataset_lmdb_env, crop_size, dataloader_batch_size)
+    else:
+        return ActiveSelectionMCDropout(dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size)
 
-    def __init__(self, dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size):
-        self.dataset_num_classes = dataset_num_classes
+
+class ActiveSelectionBase:
+
+    def __init__(self, dataset_lmdb_env, crop_size, dataloader_batch_size):
         self.crop_size = crop_size
         self.dataloader_batch_size = dataloader_batch_size
         self.env = dataset_lmdb_env
+
+
+class ActiveSelectionCoreSet(ActiveSelectionBase):
+
+    def __init__(self,  dataset_lmdb_env, crop_size, dataloader_batch_size):
+        super(ActiveSelectionCoreSet, self).__init__(dataset_lmdb_env, crop_size, dataloader_batch_size)
+
+    def _select_batch(self, features, selected_indices, N):
+        new_batch = []
+        min_distances = self._updated_distances(selected_indices, features, None)
+
+        for _ in range(N):
+            ind = np.argmax(min_distances)
+            # New examples should not be in already selected since those points
+            # should have min_distance of zero to a cluster center.
+            assert ind not in selected_indices
+            min_distances = self._updated_distances([ind], features, min_distances)
+            new_batch.append(ind)
+
+        print('Maximum distance from cluster centers is %0.5f'
+              % max(min_distances))
+        return new_batch
+
+    def _updated_distances(self, cluster_centers, features, min_distances):
+        x = features[cluster_centers, :]
+        dist = pairwise_distances(features, x, metric='euclidean')
+        if min_distances is None:
+            return np.min(dist, axis=1).reshape(-1, 1)
+        else:
+            return np.minimum(min_distances, dist)
+
+    def get_k_center_greedy_selections(self, selection_size, model, candidate_image_batch, already_selected_image_batch):
+        combined_paths = already_selected_image_batch + candidate_image_batch
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, combined_paths, self.crop_size),
+                            batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        FEATURE_DIM = 2736
+        features = np.zeros((len(combined_paths), FEATURE_DIM))
+        model.eval()
+        model.module.set_return_features(True)
+
+        with torch.no_grad():
+            for batch_idx, sample in enumerate(tqdm(loader)):
+                _, features_batch = model(sample.cuda())
+                for feature_idx in range(features_batch.shape[0]):
+                    features[batch_idx * self.dataloader_batch_size + feature_idx, :] = features_batch[feature_idx, :, :, :].cpu().numpy().flatten()
+
+        model.module.set_return_features(False)
+        selected_indices = self._select_batch(features, list(range(len(already_selected_image_batch))), selection_size)
+        return [combined_paths[i] for i in selected_indices]
+
+
+class ActiveSelectionMCDropout(ActiveSelectionBase):
+
+    def __init__(self, dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size):
+        super(ActiveSelectionMCDropout, self).__init__(dataset_lmdb_env, crop_size, dataloader_batch_size)
+        self.dataset_num_classes = dataset_num_classes
 
     def get_random_uncertainity(self, images):
         scores = []
@@ -360,8 +423,8 @@ def test_create_region_maps_with_region_cityscapes():
     new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
     train_set.expand_training_set(new_regions, counts * region_size * region_size)
     print(train_set.get_fraction_of_labeled_data())
-    #new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
-    #train_set.expand_training_set(new_regions, counts * region_size * region_size)
+    # new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
+    # train_set.expand_training_set(new_regions, counts * region_size * region_size)
     # print(train_set.get_fraction_of_labeled_data())
 
     dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
@@ -380,7 +443,140 @@ def test_create_region_maps_with_region_cityscapes():
 
     plt.show(block=True)
 
+
+def test_visualize_feature_space():
+
+    from dataloaders.dataset import active_cityscapes
+    from sklearn.manifold import TSNE
+    import matplotlib.pyplot as plt
+    import json
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': 'set_0.txt',
+        'batch_size': 12,
+        'cuda': True
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+
+    model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False, return_features=True)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
+                                         'base_0-deeplab-mobilenet-bs12-513x513', 'model_best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+
+    with open("datasets/cityscapes/clusters/clusters_0.txt", "r") as fptr:
+        cluster_dict = json.loads(fptr.read())
+
+    all_paths = []
+    cluster_index_length = []
+    labels = []
+    current_idx = 0
+    for cluster in cluster_dict:
+        all_paths.extend([u'{}'.format(x.strip()).encode('ascii') for x in cluster_dict[cluster]])
+        cluster_index_length.append((current_idx, current_idx + len(cluster_dict[cluster])))
+        current_idx = current_idx + len(cluster_dict[cluster])
+        labels.append(cluster)
+
+    dataloader = DataLoader(paths_dataset.PathsDataset(train_set.env, all_paths, train_set.crop_size),
+                            batch_size=1, shuffle=False, num_workers=0)
+
+    aggregated_features = []
+
+    for sample in tqdm(dataloader):
+        with torch.no_grad():
+            output, features = model(sample.cuda())
+            features = features[0, :, :, :].cpu().numpy()
+            aggregated_features.append(features.flatten())
+
+    print(features.shape)
+    tsne = TSNE(n_components=2, verbose=0, perplexity=40, n_iter=500000)
+    tsne_features = tsne.fit_transform(np.array(aggregated_features))
+    print(np.array(aggregated_features).shape, tsne_features.shape)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
+    colors = ["b", "g", "r", "c", "m", "y", "k"]
+
+    for i in range(len(cluster_index_length)):
+        print(cluster_index_length[i][0], cluster_index_length[i][1])
+        ax.scatter(tsne_features[cluster_index_length[i][0]:cluster_index_length[i][1], 0], tsne_features[
+                   cluster_index_length[i][0]:cluster_index_length[i][1], 1], alpha=0.8, c=colors[i], edgecolors='none', label=labels[i])
+    plt.axis('equal')
+    plt.tight_layout()
+    plt.legend(loc=2, prop={'size': 4})
+    plt.show()
+
+
+def test_core_set():
+
+    from dataloaders.dataset import active_cityscapes
+    from sklearn.manifold import TSNE
+    import matplotlib.pyplot as plt
+    import json
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': 'set_0.txt',
+        'batch_size': 12,
+        'cuda': True
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+
+    model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
+                                         'base_0-deeplab-mobilenet-bs12-513x513', 'model_best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+
+    with open("datasets/cityscapes/clusters/clusters_0.txt", "r") as fptr:
+        cluster_dict = json.loads(fptr.read())
+
+    all_paths = []
+    cluster_index_length = []
+    labels = []
+    current_idx = 0
+    for cluster in cluster_dict:
+        all_paths.extend([u'{}'.format(x.strip()).encode('ascii') for x in cluster_dict[cluster]])
+        cluster_index_length.append((current_idx, current_idx + len(cluster_dict[cluster])))
+        current_idx = current_idx + len(cluster_dict[cluster])
+        labels.append(cluster)
+
+    active_selection = ActiveSelectionCoreSet(train_set.env, args.crop_size, args.batch_size)
+    selected_clusters = active_selection.get_k_center_greedy_selections(10, model, all_paths[1:], [all_paths[0]])
+
+
+def test_kcenter():
+    active_selection = ActiveSelectionCoreSet(None, None, None)
+    features = np.array([[1, 1], [2, 2], [2, 4], [3, 3], [4, 2], [4, 5], [5, 4], [6, 2], [7, 6]])
+    print(features.shape)
+    selected_indices = active_selection._select_batch(features, [6], 5)
+    print(selected_indices)
+
 if __name__ == '__main__':
     # test_entropy_map_for_images()
     # test_nms()
-    test_create_region_maps_with_region_cityscapes()
+    # test_create_region_maps_with_region_cityscapes()
+    # test_visualize_feature_space()
+    # test_core_set()
+    test_kcenter()
