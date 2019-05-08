@@ -84,11 +84,12 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         super(ActiveSelectionMCDropout, self).__init__(dataset_lmdb_env, crop_size, dataloader_batch_size)
         self.dataset_num_classes = dataset_num_classes
 
-    def get_random_uncertainity(self, images):
+    def get_random_uncertainity(self, images, selection_count):
         scores = []
         for i in range(len(images)):
             scores.append(random.random())
-        return scores
+        selected_samples = list(zip(*sorted(zip(scores, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
+        return selected_samples
 
     def _get_vote_entropy_for_batch(self, model, image_batch):
 

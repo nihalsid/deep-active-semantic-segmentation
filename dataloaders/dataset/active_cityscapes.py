@@ -54,15 +54,6 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
         sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
         return self.get_transformed_sample(sample)
 
-    def expand_training_set(self, scores, batch_size):
-        num_new_samples = min(batch_size, len(scores))
-        selected_samples = list(zip(*sorted(zip(scores, self.remaining_image_paths), key=lambda x: x[0], reverse=True)))[1][:num_new_samples]
-        self.current_image_paths.extend(selected_samples)
-        self.last_added_image_paths = selected_samples
-        for x in selected_samples:
-            self.remaining_image_paths.remove(x)
-        self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
-
     def expand_training_set(self, paths):
         self.current_image_paths.extend(paths)
         self.last_added_image_paths = paths
