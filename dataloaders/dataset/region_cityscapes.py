@@ -13,6 +13,7 @@ from dataloaders.dataset.cityscapes_base import Mode
 
 class ActiveCityscapesRegion(cityscapes_base.ActiveCityscapesBase):
 
+    # TODO: add support for weak labeling
     def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
 
         super(ActiveCityscapesRegion, self).__init__(path, base_size, crop_size, split, overfit)

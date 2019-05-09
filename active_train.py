@@ -257,7 +257,8 @@ def main():
                         help='batch size queried from oracle')
     parser.add_argument('--active-train-mode', type=str, default='scratch',
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
-    parser.add_argument('--active-selection-mode', type=str, default='random', choices=['random', 'variance', 'coreset'], help='method to select new samples')
+    parser.add_argument('--active-selection-mode', type=str, default='random',
+                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=127, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='evaluation interval (default: 1)')
@@ -374,7 +375,7 @@ def main():
             train_loss = trainer.training(epoch)
             test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(epoch)
 
-        training_set.reset_replicated_training_set()
+        training_set.reset_replicated_training_set(args.eval_interval)
 
         writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), fraction_of_data_labeled)
         writer.add_scalar('active_loop/val_loss', test_loss, fraction_of_data_labeled)
@@ -386,11 +387,10 @@ def main():
         summary.visualize_image(writer, args.dataset, visualizations[0], visualizations[1], visualizations[2], len(training_set.current_image_paths))
 
         trainer.writer.close()
-
+        trainer.model.eval()
         if args.active_selection_mode == 'random':
             training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths, args.active_batch_size))
         elif args.active_selection_mode == 'variance':
-            trainer.model.eval()
             if args.dataset == 'active_cityscapes_image':
                 training_set.expand_training_set(active_selector.get_vote_entropy_for_images(
                     trainer.model, training_set.remaining_image_paths), args.active_batch_size)
@@ -402,10 +402,22 @@ def main():
             else:
                 raise NotImplementedError
         elif args.active_selection_mode == 'coreset':
-            trainer.model.eval()
+
             assert args.dataset == 'active_cityscapes_image', 'only images supported for coreset approach'
             training_set.expand_training_set(active_selector.get_k_center_greedy_selections(
                 args.active_batch_size, trainer.model, training_set.remaining_image_paths, training_set.current_image_paths))
+        elif args.active_selection_mode == 'ceal_confidence':
+            training_set.expand_training_set(active_selector.get_least_confident_samples(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size))
+        elif args.active_selection_mode == 'ceal_margin':
+            training_set.expand_training_set(active_selector.get_least_margin_samples(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size))
+        elif args.active_selection_mode == 'ceal_entropy':
+            training_set.expand_training_set(active_selector.get_maximum_entropy_samples(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size))
+        elif args.active_selection_mode == 'ceal_fusion':
+            training_set.expand_training_set(active_selector.get_fusion_of_confidence_margin_entropy_samples(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size))
         else:
             raise NotImplementedError
 

@@ -21,17 +21,14 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
     def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
 
         super(ActiveCityscapesImage, self).__init__(path, base_size, crop_size, split, overfit)
-
+        self.current_image_paths = self.image_paths
+        self.remaining_image_paths = []
         if self.split == 'train':
-            self.current_image_paths = self.image_paths
-            self.remaining_image_paths = []
             with open(os.path.join(self.path, 'seed_sets', init_set), "r") as fptr:
                 self.current_image_paths = [u'{}'.format(x.strip()).encode('ascii') for x in fptr.readlines() if x is not '']
                 self.remaining_image_paths = [x for x in self.image_paths if x not in self.current_image_paths]
                 print(f'# of current_image_paths = {len(self.current_image_paths)}, # of remaining_image_paths = {len(self.remaining_image_paths)}')
-        else:
-            self.current_image_paths = self.image_paths
-            self.remaining_image_paths = []
+
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
         self.last_added_image_paths = self.current_image_paths.copy()
 
@@ -40,16 +37,25 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
         img_path = None
 
         if self.mode == Mode.ALL_BATCHES:
-            img_path = self.current_image_paths[index]
+            img_path = self.current_image_paths[index] if index < len(self.current_image_paths) else self.weakly_labeled_image_paths[
+                index - len(self.current_image_paths)]
         else:
-            img_path = self.last_added_image_paths[index]
+            img_path = self.last_added_image_paths[index] if index < len(self.last_added_image_paths) else self.weakly_labeled_image_paths[
+                index - len(self.last_added_image_paths)]
+
+        assert not (img_path in self.weakly_labeled_image_paths and img_path in self.current_image_paths), "weakly labeled image exists in already labeled samples"
 
         loaded_npy = None
+
         with self.env.begin(write=False) as txn:
             loaded_npy = pickle.loads(txn.get(img_path))
 
         image = loaded_npy[:, :, 0:3]
-        target = loaded_npy[:, :, 3]
+
+        if img_path in self.weakly_labeled_targets:
+            target = self.weakly_labeled_targets[img_path]
+        else:
+            target = loaded_npy[:, :, 3]
 
         sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
         return self.get_transformed_sample(sample)
@@ -61,6 +67,13 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
             self.remaining_image_paths.remove(x)
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
 
+    def add_weak_labels(self, predictions_dict):
+        self.weakly_labeled_image_paths = predictions_dict.keys()
+        self.weakly_labeled_targets = predictions_dict
+
+    def clear_weak_labels(self):
+        self.weakly_labeled_targets = {}
+        self.weakly_labeled_image_paths = []
 
 if __name__ == '__main__':
     from torch.utils.data import DataLoader

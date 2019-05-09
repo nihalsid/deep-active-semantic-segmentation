@@ -17,6 +17,8 @@ from sklearn.metrics import pairwise_distances
 def get_active_selection_class(active_selection_method, dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size):
     if active_selection_method == 'coreset':
         return ActiveSelectionCoreSet(dataset_lmdb_env, crop_size, dataloader_batch_size)
+    elif active_selection_method == 'ceal_confidence' or active_selection_method == 'ceal_margin' or active_selection_method == 'ceal_entropy' or active_selection_method == 'ceal_fusion':
+        return ActiveSelectionCEAL(dataset_lmdb_env, crop_size, dataloader_batch_size)
     else:
         return ActiveSelectionMCDropout(dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size)
 
@@ -27,6 +29,84 @@ class ActiveSelectionBase:
         self.crop_size = crop_size
         self.dataloader_batch_size = dataloader_batch_size
         self.env = dataset_lmdb_env
+
+
+class ActiveSelectionCEAL(ActiveSelectionBase):
+
+    def __init__(self, dataset_lmdb_env, crop_size, dataloader_batch_size):
+        super(ActiveSelectionCEAL, self).__init__(dataset_lmdb_env, crop_size, dataloader_batch_size)
+
+    def get_least_confident_samples(self, model, images, selection_count):
+        model.eval()
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        max_confidence = []
+
+        with torch.no_grad():
+            for image_batch in tqdm(loader):
+                image_batch = image_batch.cuda()
+                softmax = torch.nn.Softmax2d()
+                output = model(image_batch)
+                max_conf_batch = torch.max(softmax(output), dim=1)[0]
+                for batch_idx in range(max_conf_batch.shape[0]):
+                    # prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
+                    # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :,:].cpu().numpy(), max_conf_batch[batch_idx, :, :].cpu().numpy(), prediction)
+                    max_confidence.append(torch.sum(max_conf_batch[batch_idx, :, :]).cpu().item())
+
+        selected_samples = list(zip(*sorted(zip(max_confidence, images), key=lambda x: x[0], reverse=False)))[1][:selection_count]
+        return selected_samples
+
+    def get_least_margin_samples(self, model, images, selection_count):
+        model.eval()
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        margins = []
+        with torch.no_grad():
+            for image_batch in tqdm(loader):
+                image_batch = image_batch.cuda()
+                softmax = torch.nn.Softmax2d()
+                output = softmax(model(image_batch))
+                for batch_idx in range(output.shape[0]):
+                    most_confident_scores = torch.max(output[batch_idx, :, :, :].squeeze(), dim=0)[0].cpu().numpy()
+                    output_numpy = output[batch_idx, :, :, :].cpu().numpy()
+                    ndx = np.indices(output_numpy.shape)
+                    second_most_confident_scores = output_numpy[output_numpy.argsort(0), ndx[1], ndx[2]][-2]
+                    # prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
+                    # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :, :].cpu().numpy(), most_confident_scores - second_most_confident_scores, prediction)
+                    margins.append(np.sum(most_confident_scores - second_most_confident_scores))
+
+        selected_samples = list(zip(*sorted(zip(margins, images), key=lambda x: x[0], reverse=False)))[1][:selection_count]
+        return selected_samples
+
+    def get_maximum_entropy_samples(self, model, images, selection_count):
+        model.eval()
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        entropies = []
+
+        with torch.no_grad():
+            for image_batch in tqdm(loader):
+                image_batch = image_batch.cuda()
+                softmax = torch.nn.Softmax2d()
+                output = softmax(model(image_batch))
+                num_classes = output.shape[1]
+
+                for batch_idx in range(output.shape[0]):
+                    entropy_map = torch.cuda.FloatTensor(output.shape[2], output.shape[3]).fill_(0)
+                    for c in range(num_classes):
+                        entropy_map = entropy_map - (output[batch_idx, c, :, :] * torch.log2(output[batch_idx, c, :, :] + 1e-12))
+                    # prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
+                    # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
+                    entropies.append(np.sum(entropy_map.cpu().numpy()))
+
+        selected_samples = list(zip(*sorted(zip(entropies, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
+        return selected_samples
+
+    def get_fusion_of_confidence_margin_entropy_samples(self, model, images, selection_count):
+        import random
+        samples1 = self.get_least_confident_samples(model, images, selection_count)
+        samples2 = self.get_least_margin_samples(model, images, selection_count)
+        samples3 = self.get_maximum_entropy_samples(model, images, selection_count)
+        samples = list(set(samples1 + samples2 + samples3))
+        random.shuffle(samples)
+        return samples[:selection_count]
 
 
 class ActiveSelectionCoreSet(ActiveSelectionBase):
@@ -169,14 +249,14 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
 
         map_ctr = 0
         # commented lines are for visualization and verification
-        entropy_maps = []
-        base_images = []
+        # entropy_maps = []
+        # base_images = []
         for image_batch in tqdm(loader):
             image_batch = image_batch.cuda()
             for img_idx, entropy_map in enumerate(self._get_vote_entropy_for_batch(model, image_batch)):
                 ActiveSelectionMCDropout.suppress_labeled_entropy(entropy_map, existing_regions[map_ctr])
-                base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
-                entropy_maps.append(entropy_map.cpu().numpy())
+                # base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
+                # entropy_maps.append(entropy_map.cpu().numpy())
                 score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(entropy_map.unsqueeze(
                     0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
                 map_ctr += 1
@@ -190,8 +270,8 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps.cpu(), region_size, num_requested_indices)
         # print(f'Requested/Selected indices {num_requested_indices}/{num_selected_indices}')
 
-        for i in range(len(regions)):
-            ActiveSelectionMCDropout._visualize_regions(base_images[i], entropy_maps[i], regions[i], region_size)
+        # for i in range(len(regions)):
+        #    ActiveSelectionMCDropout._visualize_regions(base_images[i], entropy_maps[i], regions[i], region_size)
 
         new_regions = {}
         for i in range(len(regions)):
@@ -574,10 +654,45 @@ def test_kcenter():
     selected_indices = active_selection._select_batch(features, [6], 5)
     print(selected_indices)
 
+
+def test_ceal():
+    from dataloaders.dataset import active_cityscapes
+    from sklearn.manifold import TSNE
+    import matplotlib.pyplot as plt
+    import json
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': 'set_0.txt',
+        'batch_size': 12,
+        'cuda': True
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+
+    model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
+                                         'base_0-deeplab-mobilenet-bs12-513x513', 'model_best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    active_selector = ActiveSelectionCEAL(train_set.env, args.crop_size, args.batch_size)
+    print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:20], 3))
+    print(active_selector.get_least_margin_samples(model, train_set.current_image_paths[:20], 3))
+    print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths[:20], 3))
+    print(active_selector.get_fusion_of_confidence_margin_entropy_samples(model, train_set.current_image_paths[:20], 3))
+
 if __name__ == '__main__':
     # test_entropy_map_for_images()
     # test_nms()
     # test_create_region_maps_with_region_cityscapes()
     # test_visualize_feature_space()
     # test_core_set()
-    test_kcenter()
+    # test_kcenter()
+    test_ceal()

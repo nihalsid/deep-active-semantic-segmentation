@@ -162,7 +162,7 @@ def main():
                 print(f'Early stopping triggered after {epoch * args.eval_interval} epochs')
                 break
 
-        training_set.reset_replicated_training_set()
+        training_set.reset_replicated_training_set(args.eval_interval)
 
         writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), len(training_set))
         writer.add_scalar('active_loop/val_loss', test_loss, len(training_set))

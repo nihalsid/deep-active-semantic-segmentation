@@ -35,8 +35,9 @@ class Cityscapes(cityscapes_base.CityscapesBase):
     def replicate_training_set(self, factor):
         self.image_paths = self.image_paths * factor
 
-    def reset_replicated_training_set(self):
-        self.image_paths = list(set(self.image_paths))
+    def reset_replicated_training_set(self, factor):
+        original_size = len(self.current_image_paths) // factor
+        self.image_paths = self.image_paths[:factor]
 
     def set_paths(self, pathlist):
         self.image_paths = pathlist

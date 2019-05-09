@@ -95,6 +95,8 @@ class ActiveCityscapesBase(CityscapesBase):
         super(ActiveCityscapesBase, self).__init__(path, base_size, crop_size, split, overfit)
         self.current_image_paths = []
         self.last_added_image_paths = []
+        self.weakly_labeled_image_paths = []
+        self.weakly_labeled_targets = {}
         self.mode = Mode.ALL_BATCHES
 
     def set_mode_all(self):
@@ -105,17 +107,20 @@ class ActiveCityscapesBase(CityscapesBase):
 
     def __len__(self):
         if self.mode == Mode.ALL_BATCHES:
-            return len(self.current_image_paths)
+            return len(self.current_image_paths) + len(self.weakly_labeled_image_paths)
         else:
-            return len(self.last_added_image_paths)
+            return len(self.last_added_image_paths) + len(self.weakly_labeled_image_paths)
 
     def replicate_training_set(self, factor):
         self.current_image_paths = self.current_image_paths * factor
+        self.weakly_labeled_image_paths = self.weakly_labeled_image_paths * factor
         self.last_added_image_paths = self.last_added_image_paths * factor
 
-    def reset_replicated_training_set(self):
-        self.current_image_paths = list(set(self.current_image_paths))
-        self.last_added_image_paths = list(set(self.last_added_image_paths))
+    def reset_replicated_training_set(self, factor):
+        original_size = len(self.current_image_paths) // factor
+        self.current_image_paths = self.current_image_paths[:original_size]
+        self.weakly_labeled_image_paths = self.weakly_labeled_image_paths[:original_size]
+        self.last_added_image_paths = self.last_added_image_paths[:original_size]
 
     def get_fraction_of_labeled_data(self):
         return self.labeled_pixel_count / (len(self.image_paths) * self.crop_size * self.crop_size)
