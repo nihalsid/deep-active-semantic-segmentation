@@ -258,10 +258,12 @@ def main():
     parser.add_argument('--active-train-mode', type=str, default='scratch',
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
     parser.add_argument('--active-selection-mode', type=str, default='random',
-                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion'], help='method to select new samples')
+                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=127, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='evaluation interval (default: 1)')
+    parser.add_argument('--weak-label-entropy-threshold', type=float, default=0.80, help='initial threshold for entropy for weak labels')
+    parser.add_argument('--weak-label-threshold-decay', type=float, default=0.015, help='decay for threshold on weak labels')
 
     args = parser.parse_args()
 
@@ -414,10 +416,23 @@ def main():
                 trainer.model, training_set.remaining_image_paths, args.active_batch_size))
         elif args.active_selection_mode == 'ceal_entropy':
             training_set.expand_training_set(active_selector.get_maximum_entropy_samples(
-                trainer.model, training_set.remaining_image_paths, args.active_batch_size))
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size)[0])
         elif args.active_selection_mode == 'ceal_fusion':
             training_set.expand_training_set(active_selector.get_fusion_of_confidence_margin_entropy_samples(
                 trainer.model, training_set.remaining_image_paths, args.active_batch_size))
+        elif args.active_selection_mode == 'ceal_entropy_weakly_labeled':
+            selected_samples, entropies = active_selector.get_maximum_entropy_samples(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size)
+            training_set.clear_weak_labels()
+            weak_labels = active_selector.get_weakly_labeled_data(trainer.model, training_set.remaining_image_paths,
+                                                                  args.weak_label_entropy_threshold - selection_iter * args.weak_label_threshold_decay, entropies)
+            for sample in selected_samples:
+                if sample in weak_labels:
+                    del weak_labels[sample]
+
+            training_set.expand_training_set(selected_samples)
+            training_set.add_weak_labels(weak_labels)
+
         else:
             raise NotImplementedError
 

@@ -36,11 +36,17 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
 
         img_path = None
 
+        is_weakly_labeled = False
+
         if self.mode == Mode.ALL_BATCHES:
-            img_path = self.current_image_paths[index] if index < len(self.current_image_paths) else self.weakly_labeled_image_paths[
+            if index >= len(self.current_image_paths):
+                is_weakly_labeled = True
+            img_path = self.current_image_paths[index] if not is_weakly_labeled else self.weakly_labeled_image_paths[
                 index - len(self.current_image_paths)]
         else:
-            img_path = self.last_added_image_paths[index] if index < len(self.last_added_image_paths) else self.weakly_labeled_image_paths[
+            if index >= len(self.last_added_image_paths):
+                is_weakly_labeled = True
+            img_path = self.last_added_image_paths[index] if not is_weakly_labeled else self.weakly_labeled_image_paths[
                 index - len(self.last_added_image_paths)]
 
         assert not (img_path in self.weakly_labeled_image_paths and img_path in self.current_image_paths), "weakly labeled image exists in already labeled samples"
@@ -51,14 +57,18 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
             loaded_npy = pickle.loads(txn.get(img_path))
 
         image = loaded_npy[:, :, 0:3]
+        retval = None
 
-        if img_path in self.weakly_labeled_targets:
+        if is_weakly_labeled:
             target = self.weakly_labeled_targets[img_path]
+            retval = self.transform_val({'image': Image.fromarray(image), 'label': Image.fromarray(loaded_npy[:, :, 3])})
+            retval['label'] = torch.from_numpy(target.astype(np.float32)).float()
         else:
             target = loaded_npy[:, :, 3]
+            sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
+            retval = self.get_transformed_sample(sample)
 
-        sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
-        return self.get_transformed_sample(sample)
+        return retval
 
     def expand_training_set(self, paths):
         self.current_image_paths.extend(paths)
@@ -68,7 +78,8 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
 
     def add_weak_labels(self, predictions_dict):
-        self.weakly_labeled_image_paths = predictions_dict.keys()
+        print(f'Adding {len(predictions_dict.keys())} weak labels')
+        self.weakly_labeled_image_paths = list(predictions_dict.keys())
         self.weakly_labeled_targets = predictions_dict
 
     def clear_weak_labels(self):

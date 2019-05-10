@@ -17,7 +17,7 @@ from sklearn.metrics import pairwise_distances
 def get_active_selection_class(active_selection_method, dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size):
     if active_selection_method == 'coreset':
         return ActiveSelectionCoreSet(dataset_lmdb_env, crop_size, dataloader_batch_size)
-    elif active_selection_method == 'ceal_confidence' or active_selection_method == 'ceal_margin' or active_selection_method == 'ceal_entropy' or active_selection_method == 'ceal_fusion':
+    elif active_selection_method == 'ceal_confidence' or active_selection_method == 'ceal_margin' or active_selection_method == 'ceal_entropy' or active_selection_method == 'ceal_fusion' or active_selection_method == 'ceal_entropy_weakly_labeled':
         return ActiveSelectionCEAL(dataset_lmdb_env, crop_size, dataloader_batch_size)
     else:
         return ActiveSelectionMCDropout(dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size)
@@ -76,7 +76,7 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
         selected_samples = list(zip(*sorted(zip(margins, images), key=lambda x: x[0], reverse=False)))[1][:selection_count]
         return selected_samples
 
-    def get_maximum_entropy_samples(self, model, images, selection_count):
+    def _get_entropies(self, model, images):
         model.eval()
         loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         entropies = []
@@ -94,10 +94,14 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
                         entropy_map = entropy_map - (output[batch_idx, c, :, :] * torch.log2(output[batch_idx, c, :, :] + 1e-12))
                     # prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
                     # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
-                    entropies.append(np.sum(entropy_map.cpu().numpy()))
+                    entropies.append(np.mean(entropy_map.cpu().numpy()))
 
+        return entropies
+
+    def get_maximum_entropy_samples(self, model, images, selection_count):
+        entropies = self._get_entropies(model, images)
         selected_samples = list(zip(*sorted(zip(entropies, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
-        return selected_samples
+        return selected_samples, entropies
 
     def get_fusion_of_confidence_margin_entropy_samples(self, model, images, selection_count):
         import random
@@ -107,6 +111,29 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
         samples = list(set(samples1 + samples2 + samples3))
         random.shuffle(samples)
         return samples[:selection_count]
+
+    def get_weakly_labeled_data(self, model, images, threshold, entropies=None):
+        if not entropies:
+            entropies = self._get_entropies(model, images)
+
+        selected_images = []
+        weak_labels = []
+        for image, entropy in zip(images, entropies):
+            if entropy < threshold:
+                selected_images.append(image)
+
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, selected_images, self.crop_size),
+                            batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+
+        with torch.no_grad():
+            for image_batch in tqdm(loader):
+                image_batch = image_batch.cuda()
+                output = model(image_batch)
+                for batch_idx in range(output.shape[0]):
+                    prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0).astype(np.uint8)
+                    weak_labels.append(prediction)
+
+        return dict(zip(selected_images, weak_labels))
 
 
 class ActiveSelectionCoreSet(ActiveSelectionBase):
@@ -126,8 +153,7 @@ class ActiveSelectionCoreSet(ActiveSelectionBase):
             min_distances = self._updated_distances([ind], features, min_distances)
             new_batch.append(ind)
 
-        print('Maximum distance from cluster centers is %0.5f'
-              % max(min_distances))
+        print('Maximum distance from cluster centers is %0.5f' % max(min_distances))
         return new_batch
 
     def _updated_distances(self, cluster_centers, features, min_distances):
@@ -664,7 +690,7 @@ def test_ceal():
     args = {
         'base_size': 513,
         'crop_size': 513,
-        'seed_set': 'set_0.txt',
+        'seed_set': 'set_dummy.txt',
         'batch_size': 12,
         'cuda': True
     }
@@ -683,10 +709,29 @@ def test_ceal():
                                          'base_0-deeplab-mobilenet-bs12-513x513', 'model_best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     active_selector = ActiveSelectionCEAL(train_set.env, args.crop_size, args.batch_size)
-    print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:20], 3))
-    print(active_selector.get_least_margin_samples(model, train_set.current_image_paths[:20], 3))
-    print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths[:20], 3))
-    print(active_selector.get_fusion_of_confidence_margin_entropy_samples(model, train_set.current_image_paths[:20], 3))
+    #print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:20], 3))
+    #print(active_selector.get_least_margin_samples(model, train_set.current_image_paths[:20], 3))
+    #print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths[:20], 3))
+    #print(active_selector.get_fusion_of_confidence_margin_entropy_samples(model, train_set.current_image_paths[:20], 3))
+    weak_labels = active_selector.get_weakly_labeled_data(model, train_set.remaining_image_paths[:50], 0.70)
+    train_set.add_weak_labels(weak_labels)
+
+    dataloader = DataLoader(train_set, batch_size=10, shuffle=False, num_workers=0)
+    for i, sample in enumerate(dataloader):
+        for j in range(sample['image'].size()[0]):
+            image = sample['image'].numpy()
+            gt = sample['label'].numpy()
+            gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), 'cityscapes')
+            image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
+            plt.figure()
+            plt.title('plot')
+            plt.subplot(211)
+            plt.imshow(image_unnormalized)
+            plt.subplot(212)
+            plt.imshow(gt_colored)
+
+    plt.show(block=True)
+
 
 if __name__ == '__main__':
     # test_entropy_map_for_images()
