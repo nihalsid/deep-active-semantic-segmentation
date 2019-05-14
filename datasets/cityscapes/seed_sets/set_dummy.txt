@@ -1,2 +1,1 @@
 /leftImg8bit/train/strasbourg/strasbourg_000001_004260_leftImg8bit.png
-/leftImg8bit/train/strasbourg/strasbourg_000000_008603_leftImg8bit.png

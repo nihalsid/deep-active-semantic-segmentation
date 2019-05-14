@@ -38,7 +38,7 @@ class DeepLab(nn.Module):
         low_res_x, features = self.decoder(x, low_level_feat)
         x = F.interpolate(low_res_x, size=input.size()[2:], mode='bilinear', align_corners=True)
         if self.return_features:
-            return x, F.avg_pool2d(features, self.average_pool_kernel_size, self.average_pool_stride)
+            return x, features
         return x
 
     def freeze_bn(self):
@@ -68,6 +68,62 @@ class DeepLab(nn.Module):
                         if p.requires_grad:
                             yield p
 
+
+def test_gradients():
+    from utils.loss import SegmentationLosses
+    import numpy as np
+    from dataloaders import make_dataloader
+    from torch.utils.data import DataLoader
+    import matplotlib.pyplot as plt
+    from dataloaders.utils import map_segmentation_to_colors
+    import sys
+
+    kwargs = {'pin_memory': True, 'init_set': 'set_dummy.txt'}
+    _, train_loader, _, _, num_classes = make_dataloader('active_cityscapes_region', 513, 513, 1, True, **kwargs)
+
+    model = DeepLab(backbone='mobilenet', output_stride=16, mc_dropout=False)
+    train_params = [{'params': model.get_1x_lr_params(), 'lr': 0.001},
+                    {'params': model.get_10x_lr_params(), 'lr': 0.001 * 10}]
+    optimizer = torch.optim.SGD(train_params, momentum=0.9, weight_decay=5e-4, nesterov=False)
+    criterion = SegmentationLosses(weight=None, cuda=True).build_loss(mode='ce')
+    model = model.cuda()
+    model.eval()
+
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(name)
+            print(param)
+            break
+
+    display = False
+    for i, sample in enumerate(train_loader):
+        image, target = sample['image'], sample['label']
+        image, target = image.cuda(), target.cuda()
+
+        if display:
+            gt_colored = map_segmentation_to_colors(np.array(target[0].cpu().numpy()).astype(np.uint8), 'cityscapes')
+            image_unnormalized = ((np.transpose(image[0].cpu().numpy(), axes=[1, 2, 0]) *
+                                   (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
+            plt.figure()
+            plt.title('display')
+            plt.subplot(211)
+            plt.imshow(image_unnormalized)
+            plt.subplot(212)
+            plt.imshow(gt_colored)
+            plt.show()
+
+        optimizer.zero_grad()
+        output = model(image)
+        loss = criterion(output, target)
+        loss.backward()
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                print(name)
+                print(param.grad)
+                input()
+        optimizer.step()
+
+    sys.exit(0)
 
 if __name__ == "__main__":
 

@@ -14,7 +14,7 @@ from utils.calculate_weights import calculate_weights_labels
 from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver, ActiveSaver
 from utils.summaries import TensorboardSummary
-from utils.active_selection import get_active_selection_class
+from active_selection import get_active_selection_class, get_max_subset_active_selector
 from utils.metrics import Evaluator
 import constants
 import sys
@@ -187,7 +187,7 @@ def main():
                         choices=['resnet', 'xception', 'drn', 'mobilenet'],
                         help='backbone name (default: resnet)')
     parser.add_argument('--out-stride', type=int, default=16,
-                        help='network output stride (default: 8)')
+                        help='network output stride (default: 16)')
     parser.add_argument('--dataset', type=str, default='active_cityscapes_image',
                         choices=['active_cityscapes_image', 'active_cityscapes_region'],
                         help='dataset name (default: active_cityscapes)')
@@ -258,7 +258,7 @@ def main():
     parser.add_argument('--active-train-mode', type=str, default='scratch',
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
     parser.add_argument('--active-selection-mode', type=str, default='random',
-                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled'], help='method to select new samples')
+                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=127, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='evaluation interval (default: 1)')
@@ -311,7 +311,8 @@ def main():
     if args.checkname is None:
         args.checkname = 'deeplab-' + str(args.backbone)
 
-    mc_dropout = args.active_selection_mode == 'variance'
+    mc_dropout = args.active_selection_mode == 'variance' or args.active_selection_mode == 'variance_representative'
+    args.active_batch_size = args.active_batch_size * 2 if args.active_selection_mode == 'variance_representative' else args.active_batch_size
 
     print()
     print(args)
@@ -335,6 +336,7 @@ def main():
     trainer.initialize()
 
     active_selector = get_active_selection_class(args.active_selection_mode, training_set.NUM_CLASSES, training_set.env, args.crop_size, args.batch_size)
+    max_subset_selector = get_max_subset_active_selector(training_set.env, args.crop_size, args.batch_size)  # used only for representativeness cases
 
     total_active_selection_iterations = min(len(training_set.image_paths) // args.active_batch_size - 1, args.max_iterations)
 
@@ -392,19 +394,23 @@ def main():
         trainer.model.eval()
         if args.active_selection_mode == 'random':
             training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths, args.active_batch_size))
-        elif args.active_selection_mode == 'variance':
+        elif args.active_selection_mode == 'variance' or args.active_selection_mode == 'variance_representative':
             if args.dataset == 'active_cityscapes_image':
-                training_set.expand_training_set(active_selector.get_vote_entropy_for_images(
-                    trainer.model, training_set.remaining_image_paths), args.active_batch_size)
+                selected_images = active_selector.get_vote_entropy_for_images(trainer.model, training_set.remaining_image_paths, args.active_batch_size)
+                if args.active_selection_mode == 'variance_representative':
+                    selected_images = max_subset_selector.get_representative_images(trainer.model, training_set.image_paths, selected_images)
+                training_set.expand_training_set(selected_images)
             elif args.dataset == 'active_cityscapes_region':
                 regions, counts = active_selector.create_region_maps(
                     trainer.model, training_set.image_paths, training_set.get_existing_region_maps(), args.active_region_size, args.active_batch_size)
-                print(f'Got {counts}/{math.ceil(args.active_batch_size * args.crop_size * args.crop_size / (args.active_region_size * args.active_region_size))} regions')
+
+                if args.active_selection_mode == 'variance_representative':
+                    regions, counts = max_subset_selector.get_representative_regions(model, train_set.image_paths, regions, args.active_region_size)
+                print(f'Got {counts}/{math.ceil((args.active_batch_size/2) * args.crop_size * args.crop_size / (args.active_region_size * args.active_region_size))} regions')
                 training_set.expand_training_set(regions, counts * args.active_region_size * args.active_region_size)
             else:
                 raise NotImplementedError
         elif args.active_selection_mode == 'coreset':
-
             assert args.dataset == 'active_cityscapes_image', 'only images supported for coreset approach'
             training_set.expand_training_set(active_selector.get_k_center_greedy_selections(
                 args.active_batch_size, trainer.model, training_set.remaining_image_paths, training_set.current_image_paths))

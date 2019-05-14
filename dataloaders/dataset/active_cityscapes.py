@@ -9,7 +9,7 @@ import random
 import math
 import torch
 import pickle
-from utils.active_selection import ActiveSelectionMCDropout
+from active_selection.mc_dropout import ActiveSelectionMCDropout
 from dataloaders.dataset import cityscapes_base
 from dataloaders.dataset.cityscapes_base import Mode
 from torch.utils import data
