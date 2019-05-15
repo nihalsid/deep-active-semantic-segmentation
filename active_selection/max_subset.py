@@ -129,7 +129,7 @@ class ActiveSelectionMaxSubset(ActiveSelectionBase):
         all_image_features = self._get_features_for_images(model, all_images)
         candidate_features = self._get_features_for_images(model, candidate_images)
         selected_candidate_indices = self._max_representative_samples(all_image_features, candidate_features, len(candidate_features) // 2)
-        self._visualize_selections(all_image_features, candidate_features, [candidate_features[i] for i in selected_candidate_indices])
+        # self._visualize_selections(all_image_features, candidate_features, [candidate_features[i] for i in selected_candidate_indices])
         return [candidate_images[i] for i in selected_candidate_indices]
 
     def _visualize_selections(self, all_features, candidate_features, selected_features):
