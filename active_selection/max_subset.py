@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.metrics import pairwise_distances
 from active_selection.base import ActiveSelectionBase
 import math
+from tqdm import tqdm
 
 
 class ActiveSelectionMaxSubset(ActiveSelectionBase):
@@ -14,19 +15,14 @@ class ActiveSelectionMaxSubset(ActiveSelectionBase):
         super(ActiveSelectionMaxSubset, self).__init__(dataset_lmdb_env, crop_size, dataloader_batch_size)
 
     def _set_representativeness(self, image_features, selected_image_features):
-        representativeness = 0
         distances = pairwise_distances(image_features, selected_image_features, metric='euclidean')
-        for i in range(len(image_features)):
-            min_distance = np.min(distances[i, :])
-            if min_distance != 0:
-                representativeness += 1 / (min_distance)
-             # self._element_representativeness(selected_image_features, image_features)
-        return representativeness
+        return np.sum(np.min(distances, axis=1)) * -1
 
     def _max_representative_samples(self, image_features, candidate_image_features, selection_count):
         selected_sample_indices = []
-        while len(selected_sample_indices) < selection_count:
-            current_best_score = 0
+        print('Finding max representative candidates..')
+        for _ in tqdm(range(selection_count)):
+            current_best_score = float("-inf")
             current_best_idx = None
             for i in range(len(candidate_image_features)):
                 if i not in selected_sample_indices:
@@ -54,7 +50,7 @@ class ActiveSelectionMaxSubset(ActiveSelectionBase):
         model.eval()
         model.module.set_return_features(True)
         with torch.no_grad():
-            for batch_idx, image_batch in enumerate(loader):
+            for batch_idx, image_batch in enumerate(tqdm(loader)):
                 image_batch = image_batch.cuda()
                 _, features_batch = model(image_batch)
                 h = math.floor(region_size * features_batch.shape[2] / self.crop_size)
@@ -80,7 +76,7 @@ class ActiveSelectionMaxSubset(ActiveSelectionBase):
         average_pool_kernel_size = (65, 65)
         average_pool_stride = average_pool_kernel_size[0] // 2
         with torch.no_grad():
-            for batch_idx, image_batch in enumerate(loader):
+            for batch_idx, image_batch in enumerate(tqdm(loader)):
                 image_batch = image_batch.cuda()
                 _, features_batch = model(image_batch)
                 for feature_idx in range(features_batch.shape[0]):
@@ -96,7 +92,7 @@ class ActiveSelectionMaxSubset(ActiveSelectionBase):
         model.eval()
         model.module.set_return_features(True)
         with torch.no_grad():
-            for batch_idx, image_batch in enumerate(loader):
+            for batch_idx, image_batch in enumerate(tqdm(loader)):
                 image_batch = image_batch.cuda()
                 _, features_batch = model(image_batch)
                 resize_ratio_r = features_batch.shape[2] / self.crop_size
@@ -115,7 +111,9 @@ class ActiveSelectionMaxSubset(ActiveSelectionBase):
 
     def get_representative_regions(self, model, all_images, candidate_regions, region_size):
         candidate_list_images, candidate_list_regions = self._convert_regions_to_list(candidate_regions)
+        print('Getting features for images for representativeness ..')
         all_image_features = self._get_features_for_image_regions(model, all_images, region_size)
+        print('Getting features for candidates for representativeness ..')
         region_features = self._get_features_for_regions(model, candidate_list_images, candidate_list_regions)
         selected_candidate_indices = self._max_representative_samples(all_image_features, region_features, len(region_features) // 2)
         # self._visualize_selections(all_image_features, region_features, [region_features[i] for i in selected_candidate_indices])
@@ -127,6 +125,7 @@ class ActiveSelectionMaxSubset(ActiveSelectionBase):
         return selected_regions, len(selected_candidate_indices)
 
     def get_representative_images(self, model, all_images, candidate_images):
+        print('Getting features for images for representativeness ..')
         all_image_features = self._get_features_for_images(model, all_images)
         candidate_features = self._get_features_for_images(model, candidate_images)
         selected_candidate_indices = self._max_representative_samples(all_image_features, candidate_features, len(candidate_features) // 2)

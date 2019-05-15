@@ -427,7 +427,7 @@ def test_max_set_cover():
         image_features_idx = [i for i in range(len(image_features)) if i not in selected_indices_across_iters]
         image_features = list(images[image_features_idx, :])
         print([random_candidates[i] for i in selected_indices])
-        for j in range(small_k):
+        for j in range(-1, small_k):
             plt.figure(i)
             plt.scatter(pca_img[image_features_idx, 0], pca_img[image_features_idx, 1], c='b')
             plt.scatter(pca_img[random_candidates, 0], pca_img[random_candidates, 1], c='g')
@@ -531,6 +531,6 @@ if __name__ == '__main__':
     # test_core_set()
     # test_kcenter()
     # test_ceal()
-    # test_max_set_cover()
+    test_max_set_cover()
     # test_region_features()
-    test_image_features()
+    # test_image_features()

@@ -259,7 +259,7 @@ def main():
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
     parser.add_argument('--active-selection-mode', type=str, default='random',
                         choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative'], help='method to select new samples')
-    parser.add_argument('--active-region-size', type=int, default=127, help='size of regions in case region dataset is used')
+    parser.add_argument('--active-region-size', type=int, default=129, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='evaluation interval (default: 1)')
     parser.add_argument('--weak-label-entropy-threshold', type=float, default=0.80, help='initial threshold for entropy for weak labels')
@@ -396,11 +396,13 @@ def main():
             training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths, args.active_batch_size))
         elif args.active_selection_mode == 'variance' or args.active_selection_mode == 'variance_representative':
             if args.dataset == 'active_cityscapes_image':
+                print('Calculating entropies..')
                 selected_images = active_selector.get_vote_entropy_for_images(trainer.model, training_set.remaining_image_paths, args.active_batch_size)
                 if args.active_selection_mode == 'variance_representative':
                     selected_images = max_subset_selector.get_representative_images(trainer.model, training_set.image_paths, selected_images)
                 training_set.expand_training_set(selected_images)
             elif args.dataset == 'active_cityscapes_region':
+                print('Creating region maps..')
                 regions, counts = active_selector.create_region_maps(
                     trainer.model, training_set.image_paths, training_set.get_existing_region_maps(), args.active_region_size, args.active_batch_size)
 
