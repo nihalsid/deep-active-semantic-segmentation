@@ -407,7 +407,7 @@ def main():
                     trainer.model, training_set.image_paths, training_set.get_existing_region_maps(), args.active_region_size, args.active_batch_size)
 
                 if args.active_selection_mode == 'variance_representative':
-                    regions, counts = max_subset_selector.get_representative_regions(model, train_set.image_paths, regions, args.active_region_size)
+                    regions, counts = max_subset_selector.get_representative_regions(trainer.model, training_set.image_paths, regions, args.active_region_size)
                 print(f'Got {counts}/{math.ceil((args.active_batch_size/2) * args.crop_size * args.crop_size / (args.active_region_size * args.active_region_size))} regions')
                 training_set.expand_training_set(regions, counts * args.active_region_size * args.active_region_size)
             else:
