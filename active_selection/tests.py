@@ -400,7 +400,7 @@ def test_max_set_cover():
     import numpy as np
     import random
     num_images = 10
-
+    np.random.seed(seed=27)
     images_cluster1 = np.random.normal(loc=2.0, scale=1.0, size=(400, 1024))
     images_cluster2 = np.random.normal(loc=4.0, scale=1.0, size=(400, 1024))
     images_cluster3 = np.random.normal(loc=6.0, scale=1.0, size=(150, 1024))
@@ -420,7 +420,7 @@ def test_max_set_cover():
     selected_indices_across_iters = []
 
     for i in range(num_iterations):
-        random_candidates = random.sample(range(len(image_features)), big_k)
+        random_candidates = list(np.random.randint(0, len(image_features), big_k))  # random.sample(range(len(image_features)), big_k)
         candidate_image_features = list(images[random_candidates, :])
         selected_indices = ActiveSelectionMaxSubset(None, None, None)._max_representative_samples(image_features, candidate_image_features, small_k)
         selected_indices_across_iters.extend([random_candidates[i] for i in selected_indices])

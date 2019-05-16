@@ -14,25 +14,28 @@ class ActiveSelectionMaxSubset(ActiveSelectionBase):
     def __init__(self, dataset_lmdb_env, crop_size, dataloader_batch_size):
         super(ActiveSelectionMaxSubset, self).__init__(dataset_lmdb_env, crop_size, dataloader_batch_size)
 
-    def _set_representativeness(self, image_features, selected_image_features):
-        distances = pairwise_distances(image_features, selected_image_features, metric='euclidean')
-        return np.sum(np.min(distances, axis=1)) * -1
-
     def _max_representative_samples(self, image_features, candidate_image_features, selection_count):
+        all_distances = pairwise_distances(image_features, candidate_image_features, metric='euclidean')
         selected_sample_indices = []
         print('Finding max representative candidates..')
+        minimum_distances = np.ones((len(image_features))) * float('inf')
         for _ in tqdm(range(selection_count)):
             current_best_score = float("-inf")
             current_best_idx = None
+            current_minimum_distances = None
             for i in range(len(candidate_image_features)):
                 if i not in selected_sample_indices:
                     selected_sample_indices.append(i)
-                    tmp_score = self._set_representativeness(image_features, [candidate_image_features[i] for i in selected_sample_indices])
+                    # tmp_distances = np.min(all_distances[:, selected_sample_indices], axis=1)  # np.minimum(current_minimum_distances, all_distances[:, i])
+                    tmp_distances = np.minimum(minimum_distances, all_distances[:, i])
+                    tmp_score = np.sum(tmp_distances) * -1
                     if tmp_score > current_best_score:
                         current_best_score = tmp_score
+                        current_minimum_distances = tmp_distances
                         current_best_idx = i
                     selected_sample_indices.pop()
             selected_sample_indices.append(current_best_idx)
+            minimum_distances = current_minimum_distances
         return selected_sample_indices
 
     def _convert_regions_to_list(self, regions):
