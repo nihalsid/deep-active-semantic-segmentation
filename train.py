@@ -55,7 +55,10 @@ class Trainer(object):
 
         self.evaluator = Evaluator(self.nclass)
 
-        self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr, args.epochs, len(self.train_loader))
+        if args.use_lr_scheduler:
+            self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr, args.epochs, len(self.train_loader))
+        else:
+            self.scheduler = None
 
         if args.cuda:
             self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
@@ -87,8 +90,9 @@ class Trainer(object):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
-
-            self.scheduler(self.optimizer, i, epoch, self.best_pred)
+            if self.scheduler:
+                self.scheduler(self.optimizer, i, epoch, self.best_pred)
+                self.writer.add_scalar('train/learning_rate', self.scheduler.current_lr, i + num_img_tr * epoch)
             self.optimizer.zero_grad()
             output = self.model(image)
             loss = self.criterion(output, target)
@@ -215,6 +219,7 @@ def main():
     parser.add_argument('--lr-scheduler', type=str, default='poly',
                         choices=['poly', 'step', 'cos'],
                         help='lr scheduler mode: (default: poly)')
+    parser.add_argument('--use-lr-scheduler', type=bool, default=True, help='use learning rate scheduler')
     parser.add_argument('--momentum', type=float, default=0.9,
                         metavar='M', help='momentum (default: 0.9)')
     parser.add_argument('--weight-decay', type=float, default=5e-4,

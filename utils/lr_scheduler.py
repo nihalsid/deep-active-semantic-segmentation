@@ -34,6 +34,7 @@ class LR_Scheduler(object):
         self.mode = mode
         print('Using {} LR Scheduler!'.format(self.mode))
         self.lr = base_lr
+        self.current_lr = base_lr
         if mode == 'step':
             assert lr_step
         self.lr_step = lr_step
@@ -58,6 +59,7 @@ class LR_Scheduler(object):
         if epoch > self.epoch:
             self.epoch = epoch
         assert lr >= 0
+        self.current_lr = lr
         self._adjust_learning_rate(optimizer, lr)
 
     def _adjust_learning_rate(self, optimizer, lr):
