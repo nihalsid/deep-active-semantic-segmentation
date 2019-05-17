@@ -38,7 +38,12 @@ class Trainer(object):
         train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
                         {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
 
-        optimizer = torch.optim.SGD(train_params, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
+        if args.optimizer == 'SGD':
+            optimizer = torch.optim.SGD(train_params, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
+        elif args.optimizer == 'Adam':
+            optimizer = torch.optim.Adam(train_params)
+        else:
+            raise NotImplementedError
 
         if args.use_balanced_weights:
             classes_weights_path = os.path.join(constants.DATASET_ROOT, args.dataset, 'class_weights.npy')
@@ -219,7 +224,8 @@ def main():
     parser.add_argument('--lr-scheduler', type=str, default='poly',
                         choices=['poly', 'step', 'cos'],
                         help='lr scheduler mode: (default: poly)')
-    parser.add_argument('--use-lr-scheduler', type=bool, default=True, help='use learning rate scheduler')
+    parser.add_argument('--optimizer', type=str, default='SGD', choices=['SGD', 'Adam'])
+    parser.add_argument('--use-lr-scheduler', default=False, help='use learning rate scheduler', action='store_true')
     parser.add_argument('--momentum', type=float, default=0.9,
                         metavar='M', help='momentum (default: 0.9)')
     parser.add_argument('--weight-decay', type=float, default=5e-4,
