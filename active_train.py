@@ -270,7 +270,7 @@ def main():
     parser.add_argument('--active-train-mode', type=str, default='scratch',
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
     parser.add_argument('--active-selection-mode', type=str, default='random',
-                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative'], help='method to select new samples')
+                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative', 'noise_image'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=129, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='evaluation interval (default: 1)')
@@ -452,7 +452,11 @@ def main():
 
             training_set.expand_training_set(selected_samples)
             training_set.add_weak_labels(weak_labels)
-
+        elif args.active_selection_mode == 'noise_image':
+            print('Calculating entropies..')
+            selected_images = active_selector.get_vote_entropy_for_images_with_input_noise(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size)
+            training_set.expand_training_set(selected_images)
         else:
             raise NotImplementedError
 
