@@ -233,7 +233,7 @@ def main():
     parser.add_argument('--lr-scheduler', type=str, default='poly',
                         choices=['poly', 'step', 'cos'],
                         help='lr scheduler mode: (default: poly)')
-    parser.add_argument('--use-lr-scheduler', type=bool, default=True, help='use learning rate scheduler')
+    parser.add_argument('--use-lr-scheduler', default=False, help='use learning rate scheduler', action='store_true')
     parser.add_argument('--optimizer', type=str, default='SGD', choices=['SGD', 'Adam'])
     parser.add_argument('--momentum', type=float, default=0.9,
                         metavar='M', help='momentum (default: 0.9)')
