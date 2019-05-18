@@ -36,7 +36,7 @@ class Trainer(object):
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
 
-    def initialize(self):
+    def initialize(self, effective_epochs, iters_per_epoch):
 
         args = self.args
 
@@ -71,7 +71,7 @@ class Trainer(object):
         self.evaluator = Evaluator(self.nclass)
 
         if args.use_lr_scheduler:
-            self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr, args.epochs, len(self.train_loader))
+            self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr, effective_epochs, iters_per_epoch)
         else:
             self.scheduler = None
 
@@ -379,11 +379,11 @@ def main():
         else:
             raise NotImplementedError
 
-        if args.active_train_mode == 'scratch':
-            trainer.initialize()
-
         print(f'\nExpanding training set with {len(training_set)} images to {len(training_set) * args.eval_interval} images')
         training_set.replicate_training_set(args.eval_interval)
+
+        if args.active_train_mode == 'scratch':
+            trainer.initialize(effective_epochs, len(dataloaders[0]))
 
         early_stop = EarlyStopChecker(patience=2, min_improvement=args.min_improvement)
 
