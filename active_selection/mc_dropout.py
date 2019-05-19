@@ -8,6 +8,7 @@ import numpy as np
 from active_selection.base import ActiveSelectionBase
 from tqdm import tqdm
 import constants
+import random
 
 
 class ActiveSelectionMCDropout(ActiveSelectionBase):
