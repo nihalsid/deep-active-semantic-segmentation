@@ -233,7 +233,7 @@ def main():
     parser.add_argument('--lr-scheduler', type=str, default='poly',
                         choices=['poly', 'step', 'cos'],
                         help='lr scheduler mode: (default: poly)')
-    parser.add_argument('--use-lr-scheduler', type=bool, default=True, help='use learning rate scheduler')
+    parser.add_argument('--use-lr-scheduler', default=False, help='use learning rate scheduler', action='store_true')
     parser.add_argument('--optimizer', type=str, default='SGD', choices=['SGD', 'Adam'])
     parser.add_argument('--momentum', type=float, default=0.9,
                         metavar='M', help='momentum (default: 0.9)')
@@ -344,8 +344,6 @@ def main():
 
     print()
 
-    trainer = Trainer(args, dataloaders, mc_dropout)
-    trainer.initialize()
 
     active_selector = get_active_selection_class(args.active_selection_mode, training_set.NUM_CLASSES, training_set.env, args.crop_size, args.batch_size)
     max_subset_selector = get_max_subset_active_selector(training_set.env, args.crop_size, args.batch_size)  # used only for representativeness cases
@@ -357,6 +355,9 @@ def main():
 
     assert (args.eval_interval <= args.epochs)
     effective_epochs = math.ceil(args.epochs / args.eval_interval)
+
+    trainer = Trainer(args, dataloaders, mc_dropout)
+    trainer.initialize(effective_epochs, len(dataloaders[0]))
 
     if args.active_train_mode == 'last':
         training_set.set_mode_last()
