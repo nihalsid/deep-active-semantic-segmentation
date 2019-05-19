@@ -273,7 +273,7 @@ def main():
                         choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative', 'noise_image'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=129, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
-    parser.add_argument('--min-improvement', type=float, default=0.01, help='evaluation interval (default: 1)')
+    parser.add_argument('--min-improvement', type=float, default=0.01, help='min improvement evaluation interval (default: 1)')
     parser.add_argument('--weak-label-entropy-threshold', type=float, default=0.80, help='initial threshold for entropy for weak labels')
     parser.add_argument('--weak-label-threshold-decay', type=float, default=0.015, help='decay for threshold on weak labels')
 
@@ -330,7 +330,7 @@ def main():
     print(args)
     torch.manual_seed(args.seed)
 
-    kwargs = {'pin_memory': True, 'init_set': args.seed_set}
+    kwargs = {'pin_memory': False, 'init_set': args.seed_set}
     dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
 
     training_set = dataloaders[0]
@@ -385,11 +385,15 @@ def main():
         if args.active_train_mode == 'scratch':
             trainer.initialize(effective_epochs, len(dataloaders[0]))
 
-        early_stop = EarlyStopChecker(patience=2, min_improvement=args.min_improvement)
+        early_stop = EarlyStopChecker(patience=5, min_improvement=args.min_improvement)
 
         for epoch in range(effective_epochs):
             train_loss = trainer.training(epoch)
             test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(epoch)
+            # check for early stopping
+            if early_stop(mIoU):
+                print(f'Early stopping triggered after {epoch * args.eval_interval} epochs')
+                break
 
         training_set.reset_replicated_training_set(args.eval_interval)
 

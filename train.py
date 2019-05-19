@@ -30,7 +30,7 @@ class Trainer(object):
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
 
-        kwargs = {'pin_memory': True}
+        kwargs = {'pin_memory': False}
         _, self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(
             args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
 
