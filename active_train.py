@@ -270,7 +270,7 @@ def main():
     parser.add_argument('--active-train-mode', type=str, default='scratch',
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
     parser.add_argument('--active-selection-mode', type=str, default='random',
-                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative', 'noise_image', 'noise_feature'], help='method to select new samples')
+                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative', 'noise_image', 'noise_feature', 'noise_variance'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=129, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='min improvement evaluation interval (default: 1)')
@@ -323,7 +323,7 @@ def main():
     if args.checkname is None:
         args.checkname = 'deeplab-' + str(args.backbone)
 
-    mc_dropout = args.active_selection_mode == 'variance' or args.active_selection_mode == 'variance_representative'
+    mc_dropout = args.active_selection_mode == 'variance' or args.active_selection_mode == 'variance_representative' or args.active_selection_mode == 'noise_variance'
     args.active_batch_size = args.active_batch_size * 2 if args.active_selection_mode == 'variance_representative' else args.active_batch_size
 
     print()
@@ -464,6 +464,11 @@ def main():
         elif args.active_selection_mode == 'noise_feature':
             print('Calculating entropies..')
             selected_images = active_selector.get_vote_entropy_for_images_with_feature_noise(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size)
+            training_set.expand_training_set(selected_images)
+        elif args.active_selection_mode == 'noise_variance':
+            print('Calculating entropies..')
+            selected_images = active_selector.get_vote_entropy_for_batch_with_noise_and_vote_entropy(
                 trainer.model, training_set.remaining_image_paths, args.active_batch_size)
             training_set.expand_training_set(selected_images)
         else:
