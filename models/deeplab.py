@@ -5,6 +5,7 @@ from models.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 from models.aspp import ASPP
 from models.decoder import Decoder
 from models.backbone import build_backbone
+import numpy as np
 
 
 class DeepLab(nn.Module):
@@ -25,16 +26,38 @@ class DeepLab(nn.Module):
         self.aspp = ASPP(backbone, output_stride, batchnorm)
         self.decoder = Decoder(num_classes, backbone, batchnorm, mc_dropout)
 
+        self.noisy_features = False
+
         if freeze_bn:
             self.freeze_bn()
 
     def set_return_features(self, return_features):
         self.return_features = return_features
 
+    def set_noisy_features(self, noisy_features):
+        self.noisy_features = noisy_features
+
     def forward(self, input):
 
+        if self.noisy_features is True:
+            noise_input = np.random.normal(loc=0.0, scale=abs(input.mean().cpu().item() * 0.05), size=input.shape).astype(np.float32)
+            input = input + torch.from_numpy(noise_input).cuda()
+
         x, low_level_feat = self.backbone(input)
+
+        if self.noisy_features is True:
+            noise_x = np.random.normal(loc=0.0, scale=abs(x.mean().cpu().item() * 0.5), size=x.shape).astype(np.float32)
+            noise_low_level_feat = np.random.normal(loc=0.0, scale=abs(low_level_feat.mean().cpu().item() *
+                                                                       0.5), size=low_level_feat.shape).astype(np.float32)
+            x += torch.from_numpy(noise_x).cuda()
+            low_level_feat += torch.from_numpy(noise_low_level_feat).cuda()
+
         x = self.aspp(x)
+
+        if self.noisy_features is True:
+            noise_x = np.random.normal(loc=0.0, scale=abs(x.mean().cpu().item() * 0.5), size=x.shape).astype(np.float32)
+            x += torch.from_numpy(noise_x).cuda()
+
         low_res_x, features = self.decoder(x, low_level_feat)
         x = F.interpolate(low_res_x, size=input.size()[2:], mode='bilinear', align_corners=True)
         if self.return_features:
