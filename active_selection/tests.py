@@ -16,6 +16,7 @@ from active_selection.core_set import ActiveSelectionCoreSet
 from active_selection.mc_dropout import ActiveSelectionMCDropout
 from active_selection.max_subset import ActiveSelectionMaxSubset
 from active_selection.mc_noise import ActiveSelectionMCNoise
+from active_selection.accuracy import ActiveSelectionAccuracy
 
 
 class dotdict(dict):
@@ -630,6 +631,36 @@ def test_entropy_map_for_images_with_noise_and_ve():
     print(active_selector.get_vote_entropy_for_batch_with_noise_and_vote_entropy(model, train_set.current_image_paths[:36], 10))
 
 
+def test_accuracy_selector():
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 12
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+    model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False, mc_dropout=True)
+
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes',
+                                         'al_4-variance-scratch_ep100-bs_125-deeplab-mobilenet-bs_12-513x513', 'run_0425', 'best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+
+    model.eval()
+
+    active_selector = ActiveSelectionAccuracy(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    print(active_selector.get_least_accurate_sample_using_labels(model, train_set.current_image_paths[:36], 10))
+
+
 if __name__ == '__main__':
     # test_entropy_map_for_images()
     # test_nms()
@@ -641,4 +672,5 @@ if __name__ == '__main__':
     # test_max_set_cover()
     # test_region_features()
     # test_image_features()
-    test_entropy_map_for_images_with_noise_and_ve()
+    # test_entropy_map_for_images_with_noise_and_ve()
+    test_accuracy_selector()

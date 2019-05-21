@@ -3,6 +3,7 @@ from active_selection.core_set import ActiveSelectionCoreSet
 from active_selection.mc_dropout import ActiveSelectionMCDropout
 from active_selection.max_subset import ActiveSelectionMaxSubset
 from active_selection.mc_noise import ActiveSelectionMCNoise
+from active_selection.accuracy import ActiveSelectionAccuracy
 
 
 def get_active_selection_class(active_selection_method, dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size):
@@ -14,6 +15,8 @@ def get_active_selection_class(active_selection_method, dataset_num_classes, dat
         return ActiveSelectionMCNoise(dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size)
     elif active_selection_method == 'variance' or active_selection_method == 'variance_representative':
         return ActiveSelectionMCDropout(dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size)
+    elif active_selection_method == 'accuracy_labels':
+        return ActiveSelectionAccuracy(dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size)
     else:
         raise NotImplementedError
 

@@ -36,7 +36,7 @@ class Trainer(object):
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
 
-    def initialize(self, effective_epochs, iters_per_epoch):
+    def initialize(self):
 
         args = self.args
 
@@ -71,7 +71,7 @@ class Trainer(object):
         self.evaluator = Evaluator(self.nclass)
 
         if args.use_lr_scheduler:
-            self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr, effective_epochs, iters_per_epoch)
+            self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr, args.epochs, len(self.train_loader))
         else:
             self.scheduler = None
 
@@ -270,7 +270,7 @@ def main():
     parser.add_argument('--active-train-mode', type=str, default='scratch',
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
     parser.add_argument('--active-selection-mode', type=str, default='random',
-                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative', 'noise_image', 'noise_feature', 'noise_variance'], help='method to select new samples')
+                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative', 'noise_image', 'noise_feature', 'noise_variance', 'accuracy_labels'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=129, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='min improvement evaluation interval (default: 1)')
@@ -352,11 +352,10 @@ def main():
     for i in range(args.resume):
         training_set.expand_training_set(active_selection.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
 
-    assert (args.eval_interval <= args.epochs)
-    effective_epochs = math.ceil(args.epochs / args.eval_interval)
+    assert args.eval_interval <= args.epochs & & args.epochs % args.eval_interval == 0
 
     trainer = Trainer(args, dataloaders, mc_dropout)
-    trainer.initialize(effective_epochs, len(dataloaders[0]))
+    trainer.initialize()
 
     if args.active_train_mode == 'last':
         training_set.set_mode_last()
@@ -379,23 +378,26 @@ def main():
         else:
             raise NotImplementedError
 
-        print(f'\nExpanding training set with {len(training_set)} images to {len(training_set) * args.eval_interval} images')
-        training_set.replicate_training_set(args.eval_interval)
+        len_dataset_before = len(training_set)
+        training_set.make_dataset_multiple_of_batchsize(args.batch_size)
+        print(f'\nExpanding training set with {len_dataset_before}  images to {len(training_set)} images')
 
         if args.active_train_mode == 'scratch':
-            trainer.initialize(effective_epochs, len(dataloaders[0]))
+            trainer.initialize()
 
         early_stop = EarlyStopChecker(patience=5, min_improvement=args.min_improvement)
 
-        for epoch in range(effective_epochs):
-            train_loss = trainer.training(epoch)
-            test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(epoch)
+        for outer_epoch in range(args.epochs // args.eval_interval):
+            train_loss = 0
+            for inner_epoch in range(args.eval_interval):
+                train_loss += trainer.training(outer_epoch * args.eval_interval + inner_epoch)
+            test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(outer_epoch * args.eval_interval + inner_epoch)
             # check for early stopping
             if early_stop(mIoU):
-                print(f'Early stopping triggered after {epoch * args.eval_interval} epochs')
+                print(f'Early stopping triggered after {outer_epoch * args.eval_interval + inner_epoch} epochs')
                 break
 
-        training_set.reset_replicated_training_set(args.eval_interval)
+        training_set.reset_dataset()
 
         writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), fraction_of_data_labeled)
         writer.add_scalar('active_loop/val_loss', test_loss, fraction_of_data_labeled)
@@ -469,6 +471,11 @@ def main():
         elif args.active_selection_mode == 'noise_variance':
             print('Calculating entropies..')
             selected_images = active_selector.get_vote_entropy_for_batch_with_noise_and_vote_entropy(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size)
+            training_set.expand_training_set(selected_images)
+        elif args.active_selection_mode == 'accuracy_labels':
+            print('Evaluating accuracies..')
+            selected_images = active_selector.get_least_accurate_sample_using_labels(
                 trainer.model, training_set.remaining_image_paths, args.active_batch_size)
             training_set.expand_training_set(selected_images)
         else:

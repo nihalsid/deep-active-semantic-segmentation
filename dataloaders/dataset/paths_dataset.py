@@ -4,6 +4,7 @@ from torch.utils import data
 import pickle
 from PIL import Image
 
+
 class PathsDataset(data.Dataset):
 
     def __init__(self, env, paths, crop_size, include_labels=False):
@@ -20,7 +21,7 @@ class PathsDataset(data.Dataset):
 
         img_path = self.paths[index]
         loaded_npy = None
-        
+
         with self.env.begin(write=False) as txn:
             loaded_npy = pickle.loads(txn.get(img_path))
 
@@ -28,8 +29,13 @@ class PathsDataset(data.Dataset):
         target = loaded_npy[:, :, 3]
 
         if self.include_labels:
-            return self.transform_val({'image': Image.fromarray(image), 'label': Image.fromarray(target)})
-        else:            
+            composed_tr = transforms.Compose([
+                tr.FixScaleCrop(crop_size=self.crop_size),
+                tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                tr.ToTensor()
+            ])
+            return composed_tr({'image': Image.fromarray(image), 'label': Image.fromarray(target)})
+        else:
             composed_tr = transforms.Compose([
                 tr.FixScaleCropImageOnly(crop_size=self.crop_size),
                 transforms.ToTensor(),
@@ -38,22 +44,25 @@ class PathsDataset(data.Dataset):
 
             return composed_tr(Image.fromarray(image))
 
-if __name__=='__main__':
+if __name__ == '__main__':
     from torch.utils.data import DataLoader
     import matplotlib.pyplot as plt
     from dataloaders.dataset import active_cityscapes
     from dataloaders.utils import map_segmentation_to_colors
     import os
-    
+    import numpy as np
+    import constants
+
     path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
     crop_size = 513
     base_size = 513
     split = 'train'
 
     cityscapes_train = active_cityscapes.ActiveCityscapesImage(path, base_size, crop_size, split, 'set_0.txt')
-    loader = DataLoader(paths_dataset.PathsDataset(cityscapes_train.env, cityscapes_train.current_image_paths, crop_size), batch_size=2, shuffle=False, num_workers=0)
-    
-    for i, sample in enumerate(dataloader, 0):
+    loader = DataLoader(PathsDataset(cityscapes_train.env, cityscapes_train.current_image_paths,
+                                     crop_size, include_labels=True), batch_size=2, shuffle=False, num_workers=0)
+
+    for i, sample in enumerate(loader, 0):
         for j in range(sample['image'].size()[0]):
             image = sample['image'].numpy()
             gt = sample['label'].numpy()
