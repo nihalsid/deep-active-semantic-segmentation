@@ -352,7 +352,7 @@ def main():
     for i in range(args.resume):
         training_set.expand_training_set(active_selection.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
 
-    assert args.eval_interval <= args.epochs & & args.epochs % args.eval_interval == 0
+    assert args.eval_interval <= args.epochs and  args.epochs % args.eval_interval == 0
 
     trainer = Trainer(args, dataloaders, mc_dropout)
     trainer.initialize()

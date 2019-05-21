@@ -112,15 +112,15 @@ class ActiveCityscapesBase(CityscapesBase):
         else:
             return len(self.last_added_image_paths) + len(self.weakly_labeled_image_paths)
 
-    def _fix_list_multiple_of_batch_size(paths, batch_size):
+    def _fix_list_multiple_of_batch_size(self, paths, batch_size):
         remainder = len(paths) % batch_size
         if remainder != 0:
             num_new_entries = batch_size - remainder
-            new_entries = random.sample(paths, new_entries)
+            new_entries = paths[:num_new_entries]
             paths.extend(new_entries)
         return paths
 
-    def make_dataset_multiple_of_batchsize(batch_size):
+    def make_dataset_multiple_of_batchsize(self, batch_size):
         self.original_size_current = len(self.current_image_paths)
         self.original_size_last_added = len(self.last_added_image_paths)
         self.original_size_weakly_labeled = len(self.weakly_labeled_image_paths)

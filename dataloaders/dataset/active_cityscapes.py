@@ -72,7 +72,7 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
 
     def expand_training_set(self, paths):
         self.current_image_paths.extend(paths)
-        self.last_added_image_paths = paths
+        self.last_added_image_paths = list(paths)
         for x in paths:
             self.remaining_image_paths.remove(x)
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
