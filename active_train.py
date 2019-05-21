@@ -387,11 +387,24 @@ def main():
 
         early_stop = EarlyStopChecker(patience=5, min_improvement=args.min_improvement)
 
+        best_mIoU = 0
+        best_Acc = 0
+        best_Acc_class = 0
+        best_FWIoU = 0
+
         for outer_epoch in range(args.epochs // args.eval_interval):
             train_loss = 0
             for inner_epoch in range(args.eval_interval):
                 train_loss += trainer.training(outer_epoch * args.eval_interval + inner_epoch)
             test_loss, mIoU, Acc, Acc_class, FWIoU, visualizations = trainer.validation(outer_epoch * args.eval_interval + inner_epoch)
+            if mIoU > best_mIoU:
+                best_mIoU = mIoU
+            if Acc > best_Acc:
+                best_Acc = Acc
+            if Acc_class > best_Acc_class:
+                best_Acc_class = Acc_class
+            if FWIoU > best_FWIoU:
+                best_FWIoU = FWIoU
             # check for early stopping
             if early_stop(mIoU):
                 print(f'Early stopping triggered after {outer_epoch * args.eval_interval + inner_epoch} epochs')
@@ -401,10 +414,10 @@ def main():
 
         writer.add_scalar('active_loop/train_loss', train_loss / len(training_set), fraction_of_data_labeled)
         writer.add_scalar('active_loop/val_loss', test_loss, fraction_of_data_labeled)
-        writer.add_scalar('active_loop/mIoU', mIoU, fraction_of_data_labeled)
-        writer.add_scalar('active_loop/Acc', Acc, fraction_of_data_labeled)
-        writer.add_scalar('active_loop/Acc_class', Acc_class, fraction_of_data_labeled)
-        writer.add_scalar('active_loop/fwIoU', FWIoU, fraction_of_data_labeled)
+        writer.add_scalar('active_loop/mIoU', best_mIoU, fraction_of_data_labeled)
+        writer.add_scalar('active_loop/Acc', best_Acc, fraction_of_data_labeled)
+        writer.add_scalar('active_loop/Acc_class', best_Acc_class, fraction_of_data_labeled)
+        writer.add_scalar('active_loop/fwIoU', best_FWIoU, fraction_of_data_labeled)
 
         summary.visualize_image(writer, args.dataset, visualizations[0], visualizations[1], visualizations[2], len(training_set.current_image_paths))
 
