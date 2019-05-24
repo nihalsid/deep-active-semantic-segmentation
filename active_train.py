@@ -253,6 +253,8 @@ def main():
                         help='iteration to resume from')
     parser.add_argument('--checkname', type=str, default=None,
                         help='set the checkpoint name')
+    parser.add_argument('--resume-selections', type=str, default=None,
+                        help='resume selections file')
     # finetuning pre-trained models
     parser.add_argument('--ft', action='store_true', default=False,
                         help='finetuning on a different dataset')
@@ -349,10 +351,14 @@ def main():
 
     total_active_selection_iterations = min(len(training_set.image_paths) // args.active_batch_size - 1, args.max_iterations)
 
-    for i in range(args.resume):
-        training_set.expand_training_set(active_selection.get_random_uncertainity(training_set.remaining_image_paths), args.active_batch_size)
+    if args.resume != 0 and args.resume_selections != None:
+        seed_size = len(training_set)
+        with open(os.path.join(saver.experiment_dir, args.resume_selections), "r") as fptr:
+            paths = [u'{}'.format(x.strip()).encode('ascii') for x in fptr.readlines() if x is not '']
+        training_set.expand_training_set(paths[seed_size:])
+        assert len(training_set) == (args.resume * args.active_batch_size + seed_size)
 
-    assert args.eval_interval <= args.epochs and  args.epochs % args.eval_interval == 0
+    assert args.eval_interval <= args.epochs and args.epochs % args.eval_interval == 0
 
     trainer = Trainer(args, dataloaders, mc_dropout)
     trainer.initialize()
@@ -439,7 +445,7 @@ def main():
 
                 if args.active_selection_mode == 'variance_representative':
                     regions, counts = max_subset_selector.get_representative_regions(trainer.model, training_set.image_paths, regions, args.active_region_size)
-                print(f'Got {counts}/{math.ceil((args.active_batch_size/2) * args.crop_size * args.crop_size / (args.active_region_size * args.active_region_size))} regions')
+                print(f'Got {counts}/{math.ceil((args.active_batch_size) * args.crop_size * args.crop_size / (args.active_region_size * args.active_region_size))} regions')
                 training_set.expand_training_set(regions, counts * args.active_region_size * args.active_region_size)
             else:
                 raise NotImplementedError
@@ -482,10 +488,17 @@ def main():
                 trainer.model, training_set.remaining_image_paths, args.active_batch_size)
             training_set.expand_training_set(selected_images)
         elif args.active_selection_mode == 'noise_variance':
-            print('Calculating entropies..')
-            selected_images = active_selector.get_vote_entropy_for_batch_with_noise_and_vote_entropy(
-                trainer.model, training_set.remaining_image_paths, args.active_batch_size)
-            training_set.expand_training_set(selected_images)
+            if args.dataset == 'active_cityscapes_image':
+                print('Calculating entropies..')
+                selected_images = active_selector.get_vote_entropy_for_batch_with_noise_and_vote_entropy(
+                    trainer.model, training_set.remaining_image_paths, args.active_batch_size)
+                training_set.expand_training_set(selected_images)
+            elif args.dataset == 'active_cityscapes_region':
+                print('Creating region maps..')
+                regions, counts = active_selector.create_region_maps(
+                    trainer.model, training_set.image_paths, training_set.get_existing_region_maps(), args.active_region_size, args.active_batch_size)
+                print(f'Got {counts}/{math.ceil((args.active_batch_size) * args.crop_size * args.crop_size / (args.active_region_size * args.active_region_size))} regions')
+                training_set.expand_training_set(regions, counts * args.active_region_size * args.active_region_size)
         elif args.active_selection_mode == 'accuracy_labels':
             print('Evaluating accuracies..')
             selected_images = active_selector.get_least_accurate_sample_using_labels(

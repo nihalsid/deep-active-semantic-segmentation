@@ -661,6 +661,65 @@ def test_accuracy_selector():
     print(active_selector.get_least_accurate_sample_using_labels(model, train_set.current_image_paths[:36], 10))
 
 
+def test_noisy_create_region_maps_with_region_cityscapes():
+    import matplotlib.pyplot as plt
+    from dataloaders.dataset import region_cityscapes
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': 'set_dummy.txt',
+        'batch_size': 2
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+
+    train_set = region_cityscapes.ActiveCityscapesRegion(path=dataset_path, base_size=args.base_size,
+                                                         crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+
+    model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False, mc_dropout=True)
+
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes',
+                                         'al_4-variance-scratch_ep100-bs_125-deeplab-mobilenet-bs_12-513x513', 'run_0425', 'best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+
+    model.eval()
+
+    # ensure that the loaded model is not crap
+    # validation(model, Data Loader(train_set, batch_size=2, shuffle=False), args)
+
+    region_size = 127
+    active_selector = ActiveSelectionMCNoise(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    train_set.image_paths = train_set.image_paths[:3]
+    print(train_set.get_fraction_of_labeled_data())
+    new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
+    train_set.expand_training_set(new_regions, counts * region_size * region_size)
+    print(train_set.get_fraction_of_labeled_data())
+    # new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
+    # train_set.expand_training_set(new_regions, counts * region_size * region_size)
+    # print(train_set.get_fraction_of_labeled_data())
+
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+    for i, sample in enumerate(dataloader):
+        for j in range(sample['image'].size()[0]):
+            image = sample['image'].numpy()
+            gt = sample['label'].numpy()
+            gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), 'cityscapes')
+            image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
+            plt.figure()
+            plt.title('plot')
+            plt.subplot(211)
+            plt.imshow(image_unnormalized)
+            plt.subplot(212)
+            plt.imshow(gt_colored)
+
+    plt.show(block=True)
+
+
 if __name__ == '__main__':
     # test_entropy_map_for_images()
     # test_nms()
@@ -673,4 +732,5 @@ if __name__ == '__main__':
     # test_region_features()
     # test_image_features()
     # test_entropy_map_for_images_with_noise_and_ve()
-    test_accuracy_selector()
+    # test_accuracy_selector()
+    test_noisy_create_region_maps_with_region_cityscapes()

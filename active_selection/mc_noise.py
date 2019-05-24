@@ -6,6 +6,7 @@ import torch
 from dataloaders.utils import map_segmentation_to_colors
 import numpy as np
 from active_selection.base import ActiveSelectionBase
+from active_selection.mc_dropout import ActiveSelectionMCDropout
 from tqdm import tqdm
 import constants
 from scipy import stats
@@ -140,6 +141,51 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
         selected_samples = list(zip(*sorted(zip(entropies, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
 
         return selected_samples
+
+    def create_region_maps(self, model, images, existing_regions, region_size, selection_size):
+
+        score_maps = torch.cuda.FloatTensor(len(images), self.crop_size - region_size + 1, self.crop_size - region_size + 1)
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size),
+                            batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
+
+        map_ctr = 0
+        # commented lines are for visualization and verification
+        # entropy_maps = []
+        # base_images = []
+        for image_batch in tqdm(loader):
+            image_batch = image_batch.cuda()
+            noise_entropies = self._get_vote_entropy_for_batch_with_feature_noise(model, image_batch)
+            mc_entropies = self._get_vote_entropy_for_batch_with_mc_dropout(model, image_batch)
+            combined_entropies = [x + y for x, y in zip(noise_entropies, mc_entropies)]
+            for img_idx, entropy_map in enumerate(combined_entropies):
+                ActiveSelectionMCDropout.suppress_labeled_entropy(entropy_map, existing_regions[map_ctr])
+                # base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
+                # entropy_maps.append(entropy_map.cpu().numpy())
+                score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(entropy_map.unsqueeze(
+                    0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
+                map_ctr += 1
+
+        min_val = score_maps.min()
+        max_val = score_maps.max()
+        minmax_norm = lambda x: x.add_(min_val).mul_(1.0 / (max_val - min_val))
+        minmax_norm(score_maps)
+
+        num_requested_indices = (selection_size * self.crop_size * self.crop_size) / (region_size * region_size)
+        regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps.cpu(), region_size, num_requested_indices)
+        # print(f'Requested/Selected indices {num_requested_indices}/{num_selected_indices}')
+
+        # for i in range(len(regions)):
+        #    ActiveSelectionMCDropout._visualize_regions(base_images[i], entropy_maps[i], regions[i], region_size)
+
+        new_regions = {}
+        for i in range(len(regions)):
+            if regions[i] != []:
+                new_regions[images[i]] = regions[i]
+
+        model.eval()
+
+        return new_regions, num_selected_indices
 
     @staticmethod
     def _visualize_entropy(image_normalized, entropy_map, prediction):
