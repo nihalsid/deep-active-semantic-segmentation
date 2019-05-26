@@ -128,3 +128,4 @@ datasets/cityscapes/leftImg8bit
 runs/
 constants.py
 *.db
+datasets/sem

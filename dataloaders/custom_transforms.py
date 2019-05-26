@@ -38,7 +38,11 @@ class ToTensor(object):
         # torch image: C X H X W
         img = sample['image']
         mask = sample['label']
-        img = np.array(img).astype(np.float32).transpose((2, 0, 1))
+
+        img = np.array(img).astype(np.float32)
+
+        if len(img.shape) == 3:
+            img = img.transpose((2, 0, 1))
         mask = np.array(mask).astype(np.float32)
 
         img = torch.from_numpy(img).float()

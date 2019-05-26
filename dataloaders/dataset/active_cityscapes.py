@@ -100,13 +100,14 @@ if __name__ == '__main__':
 
     active_selector = ActiveSelectionMCDropout(19, cityscapes_train.env, crop_size, 2)
     print('Before Expansion', len(dataloader))
-    cityscapes_train.expand_training_set(active_selector.get_random_uncertainity(cityscapes_train.current_image_paths), 10)
+    cityscapes_train.expand_training_set(active_selector.get_random_uncertainity(cityscapes_train.remaining_image_paths, 10))
     print('After Expansion', len(dataloader))
 
     for i, sample in enumerate(dataloader, 0):
         for j in range(sample['image'].size()[0]):
             image = sample['image'].numpy()
             gt = sample['label'].numpy()
+            print(gt.shape)
             gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), 'cityscapes')
             image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
             plt.figure()
