@@ -33,33 +33,26 @@ class UNet(nn.Module):
         self._initialize_weights()
 
     def forward(self, x):
+        input_size = x.size()[2:]
         conv1 = self.dconv_down1(x)
         x = self.maxpool(conv1)
-
         conv2 = self.dconv_down2(x)
         x = self.maxpool(conv2)
-
         conv3 = self.dconv_down3(x)
         x = self.maxpool(conv3)
-
         x = self.dconv_down4(x)
-
-        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
+        x = F.interpolate(x, conv3.size()[2:], mode='bilinear', align_corners=True)
         x = torch.cat([x, conv3], dim=1)
-
         x = self.dconv_up3(x)
-        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
+        x = F.interpolate(x, conv2.size()[2:], mode='bilinear', align_corners=True)
         x = torch.cat([x, conv2], dim=1)
-
         x = self.dconv_up2(x)
-        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
+        x = F.interpolate(x, conv1.size()[2:], mode='bilinear', align_corners=True)
         x = torch.cat([x, conv1], dim=1)
-
         x = self.dconv_up1(x)
 
         out = self.conv_last(x)
-
-        return out
+        return F.interpolate(out, input_size, mode='bilinear', align_corners=True)
 
     def _initialize_weights(self):
         for module in self.modules():
@@ -77,7 +70,7 @@ if __name__ == '__main__':
     model = UNet(3, 2)
     model.cuda()
     model.eval()
-    input = torch.cuda.FloatTensor(1, 3, 256, 256)
+    input = torch.cuda.FloatTensor(1, 3, 513, 513)
 
     print('NumElements: ', sum(p.numel() for p in model.parameters() if p.requires_grad))
 

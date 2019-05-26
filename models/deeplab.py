@@ -10,7 +10,7 @@ import numpy as np
 
 class DeepLab(nn.Module):
 
-    def __init__(self, backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False, return_features=False, average_pool_kernel_size=(65, 65)):
+    def __init__(self, backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False, average_pool_kernel_size=(65, 65)):
 
         super(DeepLab, self).__init__()
 
@@ -21,11 +21,10 @@ class DeepLab(nn.Module):
 
         self.average_pool_kernel_size = average_pool_kernel_size
         self.average_pool_stride = self.average_pool_kernel_size[0] // 2
-        self.return_features = return_features
         self.backbone = build_backbone(backbone, output_stride, batchnorm, mc_dropout)
         self.aspp = ASPP(backbone, output_stride, batchnorm)
         self.decoder = Decoder(num_classes, backbone, batchnorm, mc_dropout)
-
+        self.return_features = False
         self.noisy_features = False
 
         if freeze_bn:
@@ -164,8 +163,9 @@ if __name__ == "__main__":
     print(output.size())
     print('NumElements: ', sum([p.numel() for p in model.parameters()]))
 
-    model = DeepLab(backbone='mobilenet', output_stride=16, mc_dropout=True, return_features=True)
+    model = DeepLab(backbone='mobilenet', output_stride=16, mc_dropout=True)
     model.eval()
     input = torch.rand(1, 3, 513, 513)
+    model.set_return_features(True)
     output, features = model(input)
     print(features.size())
