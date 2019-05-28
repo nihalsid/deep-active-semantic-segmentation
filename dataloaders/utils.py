@@ -28,10 +28,21 @@ def create_cityscapes_label_colormap():
     }
 
 
+def create_binary_colormap():
+
+    return {
+        0: [135, 8, 44],
+        1: [12, 96, 0],
+        255: [255, 255, 255]
+    }
+
+
 def get_colormap(dataset):
 
     if dataset == 'cityscapes' or dataset == 'active_cityscapes_image' or dataset == 'active_cityscapes_region':
         return create_cityscapes_label_colormap()
+    elif dataset == 'binary':
+        return create_binary_colormap()
 
     raise Exception('No colormap for dataset found')
 
@@ -45,9 +56,17 @@ def map_segmentations_to_colors(segmentations, dataset):
     return rgb_masks
 
 
+def map_binary_output_mask_to_colors(binary_segmentation):
+    rgb_masks = []
+    for segmentation in binary_segmentation:
+        rgb_mask = map_segmentation_to_colors(segmentation, 'binary')
+        rgb_masks.append(rgb_mask)
+    rgb_masks = torch.from_numpy(np.array(rgb_masks).transpose([0, 3, 1, 2]))
+    return rgb_masks
+
+
 def map_segmentation_to_colors(segmentation, dataset):
     colormap = get_colormap(dataset)
-
     colored_segmentation = np.zeros((segmentation.shape[0], segmentation.shape[1], 3))
 
     for label in np.unique(segmentation).tolist():

@@ -1,13 +1,16 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
+from models.sync_batchnorm.batchnorm import SynchronizedBatchNorm2d
 
 
 def double_conv(in_channels, out_channels):
     return nn.Sequential(
         nn.Conv2d(in_channels, out_channels, 3, padding=1),
+        SynchronizedBatchNorm2d(out_channels),
         nn.ReLU(inplace=True),
         nn.Conv2d(out_channels, out_channels, 3, padding=1),
+        SynchronizedBatchNorm2d(out_channels),
         nn.ReLU(inplace=True)
     )
 
@@ -61,6 +64,9 @@ class UNet(nn.Module):
                 if module.bias is not None:
                     module.bias.data.zero_()
             elif isinstance(module, nn.BatchNorm2d):
+                module.weight.data.fill_(1)
+                module.bias.data.zero_()
+            elif isinstance(module, SynchronizedBatchNorm2d):
                 module.weight.data.fill_(1)
                 module.bias.data.zero_()
 

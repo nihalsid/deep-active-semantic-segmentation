@@ -5,6 +5,7 @@ from dataloaders.dataset import paths_dataset
 from dataloaders.dataset import active_cityscapes
 from models.sync_batchnorm.replicate import patch_replication_callback
 from models.deeplab import *
+from models.accuracy_predictor import *
 import os
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -661,6 +662,65 @@ def test_accuracy_selector():
     print(active_selector.get_least_accurate_sample_using_labels(model, train_set.current_image_paths[:36], 10))
 
 
+def test_accuracy_est_selector():
+    import matplotlib.pyplot as plt
+    from dataloaders.utils import map_segmentations_to_colors, map_segmentation_to_colors, map_binary_output_mask_to_colors
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 12
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+
+    model = DeepLabAccuracyPredictor(backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image', 'accuracy_predictor_50_point_fit', 'run_0002', 'checkpoint.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+
+    for i, sample in enumerate(dataloader):
+        print(train_set.current_image_paths[i])
+        image_batch = sample['image'].cuda()
+        dl_out, un_out = model(image_batch)
+        un_target = dl_out.argmax(1).cpu().squeeze() == sample['label'].long()
+        un_target[sample['label'] == 255] = 255
+        for j in range(sample['image'].size()[0]):
+            image = sample['image'].cpu().numpy()
+            gt = sample['label'].cpu().numpy()
+            gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), 'cityscapes')
+            image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
+            plt.figure()
+            plt.title('plot')
+            plt.subplot(231)
+            plt.imshow(image_unnormalized)
+            plt.subplot(232)
+            plt.imshow(map_segmentation_to_colors(np.array(un_target.numpy()[j]).astype(np.uint8), 'binary'))
+            plt.subplot(233)
+            plt.imshow(gt_colored)
+            plt.subplot(236)
+            plt.imshow(map_segmentation_to_colors(np.array(dl_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'cityscapes'))
+            plt.subplot(235)
+            plt.imshow(map_segmentation_to_colors(np.array(un_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'binary'))
+            plt.show(block=True)
+
+        if i == 1:
+            break
+
+    active_selector = ActiveSelectionAccuracy(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    print(active_selector.get_least_accurate_samples(model, train_set.current_image_paths[:10], 5, 'argmax'))
+
+
 def test_noisy_create_region_maps_with_region_cityscapes():
     import matplotlib.pyplot as plt
     from dataloaders.dataset import region_cityscapes
@@ -733,4 +793,5 @@ if __name__ == '__main__':
     # test_image_features()
     # test_entropy_map_for_images_with_noise_and_ve()
     # test_accuracy_selector()
-    test_noisy_create_region_maps_with_region_cityscapes()
+    # test_noisy_create_region_maps_with_region_cityscapes()
+    test_accuracy_est_selector()
