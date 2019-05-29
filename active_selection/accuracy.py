@@ -4,6 +4,8 @@ import numpy as np
 from dataloaders.dataset import paths_dataset
 from active_selection.base import ActiveSelectionBase
 from tqdm import tqdm
+import os
+import time
 
 
 class ActiveSelectionAccuracy(ActiveSelectionBase):
@@ -56,4 +58,18 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
                     raise NotImplementedError
 
         selected_samples = list(zip(*sorted(zip(accuracy, images), key=lambda x: x[0], reverse=False)))[1][:selection_count]
+        return selected_samples
+
+    def wait_for_selected_samples(self, location_to_monitor, images):
+
+        while True:
+            if os.path.exists(location_to_monitor):
+                break
+            time.sleep(5)
+
+        paths = []
+        with open(location_to_monitor, "r") as fptr:
+            paths = [u'{}'.format(x.strip()).encode('ascii') for x in fptr.readlines() if x is not '']
+
+        selected_samples = [x for x in paths if x in images]
         return selected_samples

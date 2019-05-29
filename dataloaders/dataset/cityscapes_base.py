@@ -135,3 +135,6 @@ class ActiveCityscapesBase(CityscapesBase):
 
     def get_fraction_of_labeled_data(self):
         return self.labeled_pixel_count / (len(self.image_paths) * self.crop_size * self.crop_size)
+
+    def get_next_est_fraction_of_labeled_data(self, active_batch_size):
+        return (self.labeled_pixel_count + active_batch_size * self.crop_size * self.crop_size) / (len(self.image_paths) * self.crop_size * self.crop_size)

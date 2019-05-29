@@ -27,7 +27,7 @@ class TensorboardSummary:
             target[:3], 1).detach().cpu().numpy(), dataset=dataset), 3, normalize=False, range=(0, 255))
         writer.add_image('Groundtruth label', grid_image, global_step)
 
-    def visualize_image(self, writer, dataset, image, target_0, output_0, target_1, output_1, global_step):
+    def visualize_image_with_unet(self, writer, dataset, image, target_0, output_0, target_1, output_1, global_step):
         grid_image = make_grid(image[:3].clone().cpu().data, 3, normalize=True)
         writer.add_image('Image', grid_image, global_step)
         grid_image = make_grid(map_segmentations_to_colors(torch.max(output_0[:3], 1)[

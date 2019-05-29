@@ -272,12 +272,13 @@ def main():
     parser.add_argument('--active-train-mode', type=str, default='scratch',
                         help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
     parser.add_argument('--active-selection-mode', type=str, default='random',
-                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative', 'noise_image', 'noise_feature', 'noise_variance', 'accuracy_labels'], help='method to select new samples')
+                        choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative', 'noise_image', 'noise_feature', 'noise_variance', 'accuracy_labels', 'accuracy_eval'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=129, help='size of regions in case region dataset is used')
     parser.add_argument('--max-iterations', type=int, default=1000, help='maximum active selection iterations')
     parser.add_argument('--min-improvement', type=float, default=0.01, help='min improvement evaluation interval (default: 1)')
     parser.add_argument('--weak-label-entropy-threshold', type=float, default=0.80, help='initial threshold for entropy for weak labels')
     parser.add_argument('--weak-label-threshold-decay', type=float, default=0.015, help='decay for threshold on weak labels')
+    parser.add_argument('--monitor-directory', type=str, default=None)
 
     args = parser.parse_args()
 
@@ -330,6 +331,8 @@ def main():
 
     print()
     print(args)
+
+    # manual seeding
     torch.manual_seed(args.seed)
 
     kwargs = {'pin_memory': False, 'init_set': args.seed_set}
@@ -503,6 +506,12 @@ def main():
             print('Evaluating accuracies..')
             selected_images = active_selector.get_least_accurate_sample_using_labels(
                 trainer.model, training_set.remaining_image_paths, args.active_batch_size)
+            training_set.expand_training_set(selected_images)
+        elif args.active_selection_mode == 'accuracy_eval':
+            full_monitor_directory = os.path.join(constants.RUNS, args.dataset, args.monitor_directory)
+            selections_file = os.path.join(full_monitor_directory, f'run_{round(training_set.get_next_est_fraction_of_labeled_data(args.active_batch_size) * 100):04d}', "selections.txt")
+            print('Waiting for the next folder to be available..', selections_file)
+            selected_images = active_selector.wait_for_selected_samples(selections_file, training_set.remaining_image_paths)
             training_set.expand_training_set(selected_images)
         else:
             raise NotImplementedError

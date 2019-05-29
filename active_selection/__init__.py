@@ -13,9 +13,9 @@ def get_active_selection_class(active_selection_method, dataset_num_classes, dat
         return ActiveSelectionCEAL(dataset_lmdb_env, crop_size, dataloader_batch_size)
     elif active_selection_method == 'noise_image' or active_selection_method == 'noise_feature' or active_selection_method == 'noise_variance':
         return ActiveSelectionMCNoise(dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size)
-    elif active_selection_method == 'variance' or active_selection_method == 'variance_representative' or active_selection_method=='random':
+    elif active_selection_method == 'variance' or active_selection_method == 'variance_representative' or active_selection_method == 'random':
         return ActiveSelectionMCDropout(dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size)
-    elif active_selection_method == 'accuracy_labels':
+    elif active_selection_method == 'accuracy_labels' or active_selection_method == 'accuracy_eval':
         return ActiveSelectionAccuracy(dataset_num_classes, dataset_lmdb_env, crop_size, dataloader_batch_size)
     else:
         raise NotImplementedError
