@@ -37,12 +37,34 @@ def create_binary_colormap():
     }
 
 
+def create_pascal_label_colormap():
+
+    def bit_get(val, idx):
+        return (val >> idx) & 1
+
+    colormap = np.zeros((256, 3), dtype=int)
+    ind = np.arange(256, dtype=int)
+
+    for shift in reversed(range(8)):
+        for channel in range(3):
+            colormap[:, channel] |= bit_get(ind, channel) << shift
+        ind >>= 3
+
+    dict_colormap = {}
+    for i in range(256):
+        dict_colormap[i] = colormap[i, :].tolist()
+
+    return dict_colormap
+
+
 def get_colormap(dataset):
 
     if dataset == 'cityscapes' or dataset == 'active_cityscapes_image' or dataset == 'active_cityscapes_region':
         return create_cityscapes_label_colormap()
     elif dataset == 'binary':
         return create_binary_colormap()
+    elif dataset == 'pascal':
+        return create_pascal_label_colormap()
 
     raise Exception('No colormap for dataset found')
 

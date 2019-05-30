@@ -129,3 +129,5 @@ runs/
 constants.py
 *.db
 datasets/sem
+datasets/pascal/*.db
+datasets/pascal/unprocessed
