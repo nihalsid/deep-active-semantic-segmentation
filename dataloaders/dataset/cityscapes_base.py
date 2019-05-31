@@ -2,10 +2,11 @@ from torchvision import transforms
 from dataloaders import custom_transforms as tr
 from torch.utils import data
 import lmdb
-import pickle
 import os
 from enum import Enum
+import json
 import random
+import pickle
 
 
 class CityscapesBase(data.Dataset):
@@ -13,7 +14,6 @@ class CityscapesBase(data.Dataset):
     NUM_CLASSES = 19
 
     def __init__(self, path, base_size, crop_size, split, overfit):
-
         self.env = lmdb.open(os.path.join(path, split + ".db"), subdir=False, readonly=True, lock=False, readahead=False, meminit=False)
         with self.env.begin(write=False) as txn:
             self.image_paths = pickle.loads(txn.get(b'__keys__'))

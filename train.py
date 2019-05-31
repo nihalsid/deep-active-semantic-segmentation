@@ -7,6 +7,7 @@ from dataloaders import make_dataloader
 from models.sync_batchnorm.replicate import patch_replication_callback
 
 from models.deeplab import *
+from models.enet import *
 from utils.loss import SegmentationLosses
 from utils.calculate_weights import calculate_weights_labels
 from utils.lr_scheduler import LR_Scheduler
@@ -31,12 +32,20 @@ class Trainer(object):
         self.writer = self.summary.create_summary()
 
         kwargs = {'pin_memory': False}
-        _, self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(
-            args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
+        self.train_set, self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(
+            args.dataset, args.base_size, args.crop_size, args.batch_size, args.workers, args.overfit, **kwargs)
 
-        model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn)
-        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
-                        {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
+        self.train_set.make_dataset_multiple_of_batchsize(args.batch_size)
+
+        if args.architecture == 'deeplab':
+            print('Using Deeplab')
+            model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn)
+            train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
+                            {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
+        elif args.architecture == 'enet':
+            print('Using ENet')
+            model = ENet(num_classes=self.nclass, encoder_relu=True, decoder_relu=True)
+            train_params = [{'params': model.parameters(), 'lr': args.lr}]
 
         if args.optimizer == 'SGD':
             optimizer = torch.optim.SGD(train_params, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
@@ -216,7 +225,7 @@ def main():
     parser.add_argument('--test-batch-size', type=int, default=None,
                         metavar='N', help='input batch size for \
 								testing (default: auto)')
-    parser.add_argument('--use-balanced-weights', action='store_true', default=True,
+    parser.add_argument('--use-balanced-weights', action='store_true', default=False,
                         help='whether to use balanced weights (default: True)')
     # optimizer params
     parser.add_argument('--lr', type=float, default=None, metavar='LR',
@@ -254,6 +263,7 @@ def main():
                         help='skip validation during training')
     parser.add_argument('--overfit', action='store_true', default=False,
                                             help='overfit to one sample')
+    parser.add_argument('--architecture', type=str, default='deeplab', choices=['deeplab', 'enet'])
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()

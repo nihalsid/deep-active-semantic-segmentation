@@ -214,6 +214,8 @@ def main():
     parser.add_argument('--loss-type', type=str, default='ce',
                         choices=['ce', 'focal'],
                         help='loss func type (default: ce)')
+    parser.add_argument('--workers', type=int, default=4,
+                        help='num workers')
     # training hyper params
     parser.add_argument('--epochs', type=int, default=None, metavar='N',
                         help='number of epochs to train (default: auto)')
@@ -336,7 +338,7 @@ def main():
     torch.manual_seed(args.seed)
 
     kwargs = {'pin_memory': False, 'init_set': args.seed_set}
-    dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.overfit, **kwargs)
+    dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.workers, args.overfit, **kwargs)
 
     training_set = dataloaders[0]
     dataloaders = dataloaders[1:]
