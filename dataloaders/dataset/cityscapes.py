@@ -14,7 +14,6 @@ class Cityscapes(cityscapes_base.CityscapesBase):
     def __init__(self, path, base_size, crop_size, split, overfit=False):
 
         super(Cityscapes, self).__init__(path, base_size, crop_size, split, overfit)
-        self.image_paths = self.image_paths
 
     def __len__(self):
         return len(self.image_paths)

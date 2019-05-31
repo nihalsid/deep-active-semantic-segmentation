@@ -131,3 +131,4 @@ constants.py
 datasets/sem
 datasets/pascal/*.db
 datasets/pascal/unprocessed
+datasets/cityscapes/unprocessed
