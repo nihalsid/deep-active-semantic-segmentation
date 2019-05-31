@@ -84,33 +84,17 @@ class CityscapesBase(data.Dataset):
         return retval
 
 
-class Mode(Enum):
-    ALL_BATCHES = 0
-    LAST_ADDED_BATCH = 1
-
-
 class ActiveCityscapesBase(CityscapesBase):
 
     def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
 
         super(ActiveCityscapesBase, self).__init__(path, base_size, crop_size, split, overfit)
         self.current_image_paths = []
-        self.last_added_image_paths = []
         self.weakly_labeled_image_paths = []
         self.weakly_labeled_targets = {}
-        self.mode = Mode.ALL_BATCHES
-
-    def set_mode_all(self):
-        self.mode = Mode.ALL_BATCHES
-
-    def set_mode_last(self):
-        self.mode = Mode.LAST_ADDED_BATCH
 
     def __len__(self):
-        if self.mode == Mode.ALL_BATCHES:
-            return len(self.current_image_paths) + len(self.weakly_labeled_image_paths)
-        else:
-            return len(self.last_added_image_paths) + len(self.weakly_labeled_image_paths)
+        return len(self.current_image_paths) + len(self.weakly_labeled_image_paths)
 
     def _fix_list_multiple_of_batch_size(self, paths, batch_size):
         remainder = len(paths) % batch_size
@@ -122,16 +106,13 @@ class ActiveCityscapesBase(CityscapesBase):
 
     def make_dataset_multiple_of_batchsize(self, batch_size):
         self.original_size_current = len(self.current_image_paths)
-        self.original_size_last_added = len(self.last_added_image_paths)
         self.original_size_weakly_labeled = len(self.weakly_labeled_image_paths)
         self.current_image_paths = self._fix_list_multiple_of_batch_size(self.current_image_paths, batch_size)
         self.weakly_labeled_image_paths = self._fix_list_multiple_of_batch_size(self.weakly_labeled_image_paths, batch_size)
-        self.last_added_image_paths = self._fix_list_multiple_of_batch_size(self.last_added_image_paths, batch_size)
 
     def reset_dataset(self):
         self.current_image_paths = self.current_image_paths[:self.original_size_current]
         self.weakly_labeled_image_paths = self.weakly_labeled_image_paths[:self.original_size_weakly_labeled]
-        self.last_added_image_paths = self.last_added_image_paths[:self.original_size_last_added]
 
     def get_fraction_of_labeled_data(self):
         return self.labeled_pixel_count / (len(self.image_paths) * self.crop_size * self.crop_size)

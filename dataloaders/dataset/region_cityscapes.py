@@ -8,7 +8,6 @@ from utils.cityscapes_to_lmdb import CITYSCAPES_IGNORE_INDEX
 import constants
 import os
 from dataloaders import custom_transforms as tr
-from dataloaders.dataset.cityscapes_base import Mode
 
 
 class ActiveCityscapesRegion(cityscapes_base.ActiveCityscapesBase):

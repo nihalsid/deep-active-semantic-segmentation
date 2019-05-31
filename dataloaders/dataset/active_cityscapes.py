@@ -11,9 +11,9 @@ import torch
 import pickle
 from active_selection.mc_dropout import ActiveSelectionMCDropout
 from dataloaders.dataset import cityscapes_base
-from dataloaders.dataset.cityscapes_base import Mode
 from torch.utils import data
 import constants
+from tqdm import tqdm
 
 
 class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
@@ -30,7 +30,18 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
                 print(f'# of current_image_paths = {len(self.current_image_paths)}, # of remaining_image_paths = {len(self.remaining_image_paths)}')
         #self.current_image_paths = self.current_image_paths[:5]
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
-        self.last_added_image_paths = self.current_image_paths.copy()
+        self.memory_hog_mode = True
+        if self.memory_hog_mode:
+            self.path_to_npy = {}
+            self.load_files_into_memory()
+
+    def load_files_into_memory(self):
+        print('Acquiring dataset in memory')
+        for n in tqdm(self.current_image_paths):
+            if n not in self.path_to_npy:
+                with self.env.begin(write=False) as txn:
+                    loaded_npy = pickle.loads(txn.get(n))
+                    self.path_to_npy[n] = loaded_npy
 
     def __getitem__(self, index):
 
@@ -38,23 +49,19 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
 
         is_weakly_labeled = False
 
-        if self.mode == Mode.ALL_BATCHES:
-            if index >= len(self.current_image_paths):
-                is_weakly_labeled = True
-            img_path = self.current_image_paths[index] if not is_weakly_labeled else self.weakly_labeled_image_paths[
-                index - len(self.current_image_paths)]
-        else:
-            if index >= len(self.last_added_image_paths):
-                is_weakly_labeled = True
-            img_path = self.last_added_image_paths[index] if not is_weakly_labeled else self.weakly_labeled_image_paths[
-                index - len(self.last_added_image_paths)]
+        if index >= len(self.current_image_paths):
+            is_weakly_labeled = True
+        img_path = self.current_image_paths[index] if not is_weakly_labeled else self.weakly_labeled_image_paths[index - len(self.current_image_paths)]
 
         assert not (img_path in self.weakly_labeled_image_paths and img_path in self.current_image_paths), "weakly labeled image exists in already labeled samples"
 
         loaded_npy = None
 
-        with self.env.begin(write=False) as txn:
-            loaded_npy = pickle.loads(txn.get(img_path))
+        if self.memory_hog_mode:
+            loaded_npy = self.path_to_npy[img_path]
+        else:
+            with self.env.begin(write=False) as txn:
+                loaded_npy = pickle.loads(txn.get(img_path))
 
         image = loaded_npy[:, :, 0:3]
         retval = None
@@ -72,9 +79,10 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
 
     def expand_training_set(self, paths):
         self.current_image_paths.extend(paths)
-        self.last_added_image_paths = list(paths)
         for x in paths:
             self.remaining_image_paths.remove(x)
+        if self.memory_hog_mode:
+            self.load_files_into_memory()
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
 
     def add_weak_labels(self, predictions_dict):

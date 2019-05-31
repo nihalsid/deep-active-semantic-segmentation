@@ -1,9 +1,8 @@
 import numpy as np
 from PIL import Image
 from torch.utils import data
-import glob
-from pathlib import Path
 import os
+from tqdm import tqdm
 import constants
 from dataloaders.dataset import cityscapes_base
 import pickle
@@ -14,6 +13,14 @@ class Cityscapes(cityscapes_base.CityscapesBase):
     def __init__(self, path, base_size, crop_size, split, overfit=False):
 
         super(Cityscapes, self).__init__(path, base_size, crop_size, split, overfit)
+        self.memory_hog_mode = True
+        if self.memory_hog_mode:
+                self.path_to_npy = {}
+                print('Acquiring dataset in memory')
+                for n in tqdm(self.image_paths):	
+                    with self.env.begin(write=False) as txn:
+                        loaded_npy = pickle.loads(txn.get(n))
+                        self.path_to_npy[n] = loaded_npy
 
     def __len__(self):
         return len(self.image_paths)
@@ -23,8 +30,11 @@ class Cityscapes(cityscapes_base.CityscapesBase):
         img_path = self.image_paths[index]
 
         loaded_npy = None
-        with self.env.begin(write=False) as txn:
-            loaded_npy = pickle.loads(txn.get(img_path))
+        if self.memory_hog_mode:
+                loaded_npy = self.path_to_npy[img_path]
+        else:
+                with self.env.begin(write=False) as txn:
+                    loaded_npy = pickle.loads(txn.get(img_path))
 
         image = loaded_npy[:, :, 0:3]
         target = loaded_npy[:, :, 3]
