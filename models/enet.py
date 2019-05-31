@@ -8,9 +8,9 @@ class InitialBlock(nn.Module):
         super().__init__()
 
         if relu:
-            activation = nn.ReLU(inplace=True)
+            activation = nn.ReLU()
         else:
-            activation = nn.PReLU(inplace=True)
+            activation = nn.PReLU()
 
         self.main_branch = nn.Conv2d(in_channels, out_channels - 3, kernel_size=kernel_size, stride=2, padding=padding, bias=bias)
         self.ext_branch = nn.MaxPool2d(kernel_size, stride=2, padding=padding)
@@ -20,11 +20,12 @@ class InitialBlock(nn.Module):
         self.out_prelu = activation
 
     def forward(self, x):
-
         main = self.main_branch(x)
         ext = self.ext_branch(x)
+
         out = torch.cat((main, ext), 1)
         out = self.batch_norm(out)
+
         return self.out_prelu(out)
 
 
@@ -34,9 +35,9 @@ class RegularBottleneck(nn.Module):
         super().__init__()
         internal_channels = channels // internal_ratio
         if relu:
-            activation = nn.ReLU(inplace=True)
+            activation = nn.ReLU()
         else:
-            activation = nn.PReLU(inplace=True)
+            activation = nn.PReLU()
 
         self.ext_conv1 = nn.Sequential(nn.Conv2d(channels, internal_channels, kernel_size=1, stride=1, bias=bias),
                                        nn.BatchNorm2d(internal_channels), activation)
@@ -79,9 +80,9 @@ class DownsamplingBottleneck(nn.Module):
         internal_channels = in_channels // internal_ratio
 
         if relu:
-            activation = nn.ReLU(inplace=True)
+            activation = nn.ReLU()
         else:
-            activation = nn.PReLU(inplace=True)
+            activation = nn.PReLU()
 
         self.main_max1 = nn.MaxPool2d(kernel_size, stride=2, padding=padding, return_indices=return_indices)
 
@@ -128,9 +129,9 @@ class UpsamplingBottleneck(nn.Module):
         internal_channels = in_channels // internal_ratio
 
         if relu:
-            activation = nn.ReLU(inplace=True)
+            activation = nn.ReLU()
         else:
-            activation = nn.PReLU(inplace=True)
+            activation = nn.PReLU()
 
         self.main_conv1 = nn.Sequential(nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=bias), nn.BatchNorm2d(out_channels))
         self.main_unpool1 = nn.MaxUnpool2d(kernel_size=2)

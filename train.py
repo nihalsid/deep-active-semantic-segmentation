@@ -7,7 +7,8 @@ from dataloaders import make_dataloader
 from models.sync_batchnorm.replicate import patch_replication_callback
 
 from models.deeplab import *
-from models.enet import *
+from models.enet import ENet
+from models.fastscnn import FastSCNN
 from utils.loss import SegmentationLosses
 from utils.calculate_weights import calculate_weights_labels
 from utils.lr_scheduler import LR_Scheduler
@@ -45,6 +46,10 @@ class Trainer(object):
         elif args.architecture == 'enet':
             print('Using ENet')
             model = ENet(num_classes=self.nclass, encoder_relu=True, decoder_relu=True)
+            train_params = [{'params': model.parameters(), 'lr': args.lr}]
+        elif args.architecture == 'fastscnn':
+            print('Using FastSCNN')
+            model = FastSCNN(3, self.nclass)
             train_params = [{'params': model.parameters(), 'lr': args.lr}]
 
         if args.optimizer == 'SGD':
@@ -263,7 +268,7 @@ def main():
                         help='skip validation during training')
     parser.add_argument('--overfit', action='store_true', default=False,
                                             help='overfit to one sample')
-    parser.add_argument('--architecture', type=str, default='deeplab', choices=['deeplab', 'enet'])
+    parser.add_argument('--architecture', type=str, default='deeplab', choices=['deeplab', 'enet', 'fastscnn'])
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
