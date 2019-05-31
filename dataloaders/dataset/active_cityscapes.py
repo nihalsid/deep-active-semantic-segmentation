@@ -61,11 +61,11 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
 
         if is_weakly_labeled:
             target = self.weakly_labeled_targets[img_path]
-            retval = self.transform_val({'image': Image.fromarray(image), 'label': Image.fromarray(loaded_npy[:, :, 3])})
+            retval = self.transform_val({'image': image, 'label': loaded_npy[:, :, 3]})
             retval['label'] = torch.from_numpy(target.astype(np.float32)).float()
         else:
             target = loaded_npy[:, :, 3]
-            sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
+            sample = {'image': image, 'label': target}
             retval = self.get_transformed_sample(sample)
 
         return retval
