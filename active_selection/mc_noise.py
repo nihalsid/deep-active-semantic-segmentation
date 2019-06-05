@@ -18,7 +18,7 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
         super(ActiveSelectionMCNoise, self).__init__(dataset_lmdb_env, crop_size, dataloader_batch_size)
         self.dataset_num_classes = num_classes
 
-    def _get_vote_entropy_for_batch_with_input_noise(self, model, image_batch):
+    def _get_vote_entropy_for_batch_with_input_noise(self, model, image_batch, label_batch):
 
         outputs = torch.cuda.FloatTensor(image_batch.shape[0], constants.MC_STEPS, image_batch.shape[2], image_batch.shape[3])
         with torch.no_grad():
@@ -30,11 +30,11 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
 
         for i in range(image_batch.shape[0]):
             entropy_map = torch.cuda.FloatTensor(image_batch.shape[2], image_batch.shape[3]).fill_(0)
-
+            mask = (label_batch[i, :, :] >= 0) & (label_batch[i, :, :] < self.dataset_num_classes)
             for c in range(self.dataset_num_classes):
                 p = torch.sum(outputs[i, :, :, :] == c, dim=0, dtype=torch.float32) / constants.MC_STEPS
                 entropy_map = entropy_map - (p * torch.log2(p + 1e-12))
-
+            entropy_map[mask] = 0
             # visualize for debugging
 
             # prediction = stats.mode(outputs[i, :, :, :].cpu().numpy(), axis=0)[0].squeeze()
@@ -45,19 +45,21 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
 
     def get_vote_entropy_for_images_with_input_noise(self, model, images, selection_count):
 
-        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
+                            batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         model.eval()
 
         entropies = []
-        for image_batch in tqdm(loader):
-            image_batch = image_batch.cuda()
+        for sample in tqdm(loader):
+            image_batch = sample['image'].cuda()
+            label_batch = sample['label'].cuda()
             entropies.extend([torch.sum(x).cpu().item() / (image_batch.shape[2] * image_batch.shape[3])
-                              for x in self._get_vote_entropy_for_batch_with_input_noise(model, image_batch)])
+                              for x in self._get_vote_entropy_for_batch_with_input_noise(model, image_batch, label_batch)])
 
         selected_samples = list(zip(*sorted(zip(entropies, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
         return selected_samples
 
-    def _get_vote_entropy_for_batch_with_feature_noise(self, model, image_batch):
+    def _get_vote_entropy_for_batch_with_feature_noise(self, model, image_batch, label_batch):
         model.module.set_noisy_features(True)
         outputs = torch.cuda.FloatTensor(image_batch.shape[0], constants.MC_STEPS, image_batch.shape[2], image_batch.shape[3])
         with torch.no_grad():
@@ -68,11 +70,11 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
 
         for i in range(image_batch.shape[0]):
             entropy_map = torch.cuda.FloatTensor(image_batch.shape[2], image_batch.shape[3]).fill_(0)
-
+            mask = (label_batch[i, :, :] >= 0) & (label_batch[i, :, :] < self.dataset_num_classes)
             for c in range(self.dataset_num_classes):
                 p = torch.sum(outputs[i, :, :, :] == c, dim=0, dtype=torch.float32) / constants.MC_STEPS
                 entropy_map = entropy_map - (p * torch.log2(p + 1e-12))
-
+            entropy_map[mask] = 0
             # visualize for debugging
 
             # prediction = stats.mode(outputs[i, :, :, :].cpu().numpy(), axis=0)[0].squeeze()
@@ -81,7 +83,7 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
         model.module.set_noisy_features(False)
         return entropy_maps
 
-    def _get_vote_entropy_for_batch_with_mc_dropout(self, model, image_batch):
+    def _get_vote_entropy_for_batch_with_mc_dropout(self, model, image_batch, label_batch):
 
         def turn_on_dropout(m):
             if type(m) == torch.nn.Dropout2d:
@@ -97,11 +99,11 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
 
         for i in range(image_batch.shape[0]):
             entropy_map = torch.cuda.FloatTensor(image_batch.shape[2], image_batch.shape[3]).fill_(0)
-
+            mask = (label_batch[i, :, :] >= 0) & (label_batch[i, :, :] < self.dataset_num_classes)
             for c in range(self.dataset_num_classes):
                 p = torch.sum(outputs[i, :, :, :] == c, dim=0, dtype=torch.float32) / constants.MC_STEPS
                 entropy_map = entropy_map - (p * torch.log2(p + 1e-12))
-
+            entropy_map[mask] = 0
             # visualize for debugging
             # prediction = stats.mode(outputs[i, :, :, :].cpu().numpy(), axis=0)[0].squeeze()
             # self._visualize_entropy(image_batch[i, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
@@ -113,27 +115,31 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
 
     def get_vote_entropy_for_images_with_feature_noise(self, model, images, selection_count):
 
-        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
+                            batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         model.eval()
         entropies = []
-        for image_batch in tqdm(loader):
-            image_batch = image_batch.cuda()
+        for sample in tqdm(loader):
+            image_batch = sample['image'].cuda()
+            label_batch = sample['label'].cuda()
             entropies.extend([torch.sum(x).cpu().item() / (image_batch.shape[2] * image_batch.shape[3])
-                              for x in self._get_vote_entropy_for_batch_with_feature_noise(model, image_batch)])
+                              for x in self._get_vote_entropy_for_batch_with_feature_noise(model, image_batch, label_batch)])
 
         selected_samples = list(zip(*sorted(zip(entropies, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
         return selected_samples
 
     def get_vote_entropy_for_batch_with_noise_and_vote_entropy(self, model, images, selection_count):
 
-        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
+                            batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         model.eval()
 
         entropies = []
-        for image_batch in tqdm(loader):
-            image_batch = image_batch.cuda()
-            noise_entropies = self._get_vote_entropy_for_batch_with_feature_noise(model, image_batch)
-            mc_entropies = self._get_vote_entropy_for_batch_with_mc_dropout(model, image_batch)
+        for sample in tqdm(loader):
+            image_batch = sample['image'].cuda()
+            label_batch = sample['label'].cuda()
+            noise_entropies = self._get_vote_entropy_for_batch_with_feature_noise(model, image_batch, label_batch)
+            mc_entropies = self._get_vote_entropy_for_batch_with_mc_dropout(model, image_batch, label_batch)
             combined_entropies = [x + y for x, y in zip(noise_entropies, mc_entropies)]
             entropies.extend([torch.sum(x).cpu().item() / (image_batch.shape[2] * image_batch.shape[3])
                               for x in combined_entropies])
@@ -145,7 +151,7 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
     def create_region_maps(self, model, images, existing_regions, region_size, selection_size):
 
         score_maps = torch.cuda.FloatTensor(len(images), self.crop_size - region_size + 1, self.crop_size - region_size + 1)
-        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size),
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
                             batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
 
@@ -153,10 +159,11 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
         # commented lines are for visualization and verification
         # entropy_maps = []
         # base_images = []
-        for image_batch in tqdm(loader):
-            image_batch = image_batch.cuda()
-            noise_entropies = self._get_vote_entropy_for_batch_with_feature_noise(model, image_batch)
-            mc_entropies = self._get_vote_entropy_for_batch_with_mc_dropout(model, image_batch)
+        for sample in tqdm(loader):
+            image_batch = sample['image'].cuda()
+            label_batch = sample['label'].cuda()
+            noise_entropies = self._get_vote_entropy_for_batch_with_feature_noise(model, image_batch, label_batch)
+            mc_entropies = self._get_vote_entropy_for_batch_with_mc_dropout(model, image_batch, label_batch)
             combined_entropies = [x + y for x, y in zip(noise_entropies, mc_entropies)]
             for img_idx, entropy_map in enumerate(combined_entropies):
                 ActiveSelectionMCDropout.suppress_labeled_entropy(entropy_map, existing_regions[map_ctr])

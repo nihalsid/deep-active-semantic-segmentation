@@ -53,14 +53,7 @@ class Trainer(object):
             raise NotImplementedError
 
         if args.use_balanced_weights:
-            dataset_folder = args.dataset
-            if args.dataset == 'active_cityscapes':
-                dataset_folder = 'cityscapes'
-            classes_weights_path = os.path.join(constants.DATASET_ROOT, dataset_folder, 'class_weights.npy')
-            if os.path.isfile(classes_weights_path):
-                weight = np.load(classes_weights_path)
-            else:
-                weight = calculate_weights_labels(args.dataset, self.train_loader, self.nclass)
+            weight = calculate_weights_labels(args.dataset, self.train_loader, self.nclass)
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None

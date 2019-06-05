@@ -24,7 +24,7 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         selected_samples = list(zip(*sorted(zip(scores, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
         return selected_samples
 
-    def _get_vote_entropy_for_batch(self, model, image_batch):
+    def _get_vote_entropy_for_batch(self, model, image_batch, label_batch):
 
         outputs = torch.cuda.FloatTensor(image_batch.shape[0], constants.MC_STEPS, image_batch.shape[2], image_batch.shape[3])
         with torch.no_grad():
@@ -35,11 +35,11 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
 
         for i in range(image_batch.shape[0]):
             entropy_map = torch.cuda.FloatTensor(image_batch.shape[2], image_batch.shape[3]).fill_(0)
-
+            mask = (label_batch[i, :, :] >= 0) & (label_batch[i, :, :] < self.dataset_num_classes)
             for c in range(self.dataset_num_classes):
                 p = torch.sum(outputs[i, :, :, :] == c, dim=0, dtype=torch.float32) / constants.MC_STEPS
                 entropy_map = entropy_map - (p * torch.log2(p + 1e-12))
-
+            entropy_map[mask] = 0
             # visualize for debugging
             # prediction = stats.mode(outputs[i, :, :, :].cpu().numpy(), axis=0)[0].squeeze()
             # self._visualize_entropy(image_batch[i, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
@@ -96,7 +96,7 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         model.apply(turn_on_dropout)
 
         score_maps = torch.cuda.FloatTensor(len(images), self.crop_size - region_size + 1, self.crop_size - region_size + 1)
-        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size),
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
                             batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
 
@@ -104,9 +104,10 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         # commented lines are for visualization and verification
         # entropy_maps = []
         # base_images = []
-        for image_batch in tqdm(loader):
-            image_batch = image_batch.cuda()
-            for img_idx, entropy_map in enumerate(self._get_vote_entropy_for_batch(model, image_batch)):
+        for sample in tqdm(loader):
+            image_batch = sample['image'].cuda()
+            label_batch = sample['label'].cuda()
+            for img_idx, entropy_map in enumerate(self._get_vote_entropy_for_batch(model, image_batch, label_batch)):
                 ActiveSelectionMCDropout.suppress_labeled_entropy(entropy_map, existing_regions[map_ctr])
                 # base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
                 # entropy_maps.append(entropy_map.cpu().numpy())
@@ -145,10 +146,11 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
 
         entropies = []
-        for image_batch in tqdm(loader):
-            image_batch = image_batch.cuda()
+        for sample in tqdm(loader):
+            image_batch = sample['image'].cuda()
+            label_batch = sample['label'].cuda()
             entropies.extend([torch.sum(x).cpu().item() / (image_batch.shape[2] * image_batch.shape[3])
-                              for x in self._get_vote_entropy_for_batch(model, image_batch)])
+                              for x in self._get_vote_entropy_for_batch(model, image_batch, label_batch)])
 
         model.eval()
         selected_samples = list(zip(*sorted(zip(entropies, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]

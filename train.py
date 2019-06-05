@@ -65,6 +65,7 @@ class Trainer(object):
                 weight = np.load(classes_weights_path)
             else:
                 weight = calculate_weights_labels(args.dataset, self.train_loader, self.nclass)
+                np.save(classes_weights_path, weight)
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None

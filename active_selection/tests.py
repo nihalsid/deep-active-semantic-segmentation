@@ -371,7 +371,7 @@ def test_ceal():
     checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
                                          'base_0-deeplab-mobilenet-bs12-513x513', 'model_best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
-    active_selector = ActiveSelectionCEAL(train_set.env, args.crop_size, args.batch_size)
+    active_selector = ActiveSelectionCEAL(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
     # print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:20], 3))
     # print(active_selector.get_least_margin_samples(model, train_set.current_image_paths[:20], 3))
     # print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths[:20], 3))
@@ -781,9 +781,9 @@ def test_noisy_create_region_maps_with_region_cityscapes():
 
 
 if __name__ == '__main__':
-    # test_entropy_map_for_images()
-    # test_nms()
-    # test_create_region_maps_with_region_cityscapes()
+    test_entropy_map_for_images()
+    test_nms()
+    test_create_region_maps_with_region_cityscapes()
     # test_visualize_feature_space()
     # test_core_set()
     # test_kcenter()
@@ -791,7 +791,7 @@ if __name__ == '__main__':
     # test_max_set_cover()
     # test_region_features()
     # test_image_features()
-    # test_entropy_map_for_images_with_noise_and_ve()
-    # test_accuracy_selector()
-    # test_noisy_create_region_maps_with_region_cityscapes()
+    test_entropy_map_for_images_with_noise_and_ve()
+    test_accuracy_selector()
+    test_noisy_create_region_maps_with_region_cityscapes()
     test_accuracy_est_selector()
