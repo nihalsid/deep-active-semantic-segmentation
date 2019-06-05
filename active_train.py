@@ -264,8 +264,6 @@ def main():
                         help='initial labeled set')
     parser.add_argument('--active-batch-size', type=int, default=50,
                         help='batch size queried from oracle')
-    parser.add_argument('--active-train-mode', type=str, default='scratch',
-                        help='whether to reset model after each active loop or train only on new data', choices=['last', 'mix', 'scratch'])
     parser.add_argument('--active-selection-mode', type=str, default='random',
                         choices=['random', 'variance', 'coreset', 'ceal_confidence', 'ceal_margin', 'ceal_entropy', 'ceal_fusion', 'ceal_entropy_weakly_labeled', 'variance_representative', 'noise_image', 'noise_feature', 'noise_variance', 'accuracy_labels', 'accuracy_eval'], help='method to select new samples')
     parser.add_argument('--active-region-size', type=int, default=129, help='size of regions in case region dataset is used')
@@ -361,13 +359,6 @@ def main():
     trainer = Trainer(args, dataloaders, mc_dropout)
     trainer.initialize()
 
-    if args.active_train_mode == 'last':
-        training_set.set_mode_last()
-    if args.active_train_mode == 'scratch':
-        training_set.set_mode_all()
-    else:
-        raise NotImplementedError
-
     for selection_iter in range(args.resume, total_active_selection_iterations):
 
         print(f'ActiveIteration-{selection_iter:03d}/{total_active_selection_iterations:03d}')
@@ -386,8 +377,7 @@ def main():
         training_set.make_dataset_multiple_of_batchsize(args.batch_size)
         print(f'\nExpanding training set with {len_dataset_before}  images to {len(training_set)} images')
 
-        if args.active_train_mode == 'scratch':
-            trainer.initialize()
+        trainer.initialize()
 
         early_stop = EarlyStopChecker(patience=5, min_improvement=args.min_improvement)
 
