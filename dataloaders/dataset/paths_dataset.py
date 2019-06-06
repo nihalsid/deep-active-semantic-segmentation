@@ -34,7 +34,7 @@ class PathsDataset(data.Dataset):
                 tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 tr.ToTensor()
             ])
-            return composed_tr({'image': Image.fromarray(image), 'label': Image.fromarray(target)})
+            return composed_tr({'image': image, 'label': target})
         else:
             composed_tr = transforms.Compose([
                 tr.FixScaleCropImageOnly(crop_size=self.crop_size),

@@ -52,16 +52,15 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
                     for idx in range(prediction.shape[0]):
                         mask = (label_batch[idx, :, :] >= 0) & (label_batch[idx, :, :] < self.num_classes)
                         incorrect = prediction[idx, 0, mask]
-                        num_inaccurate_pixels.append(incorrect[idx, 1, :, :].sum().cpu().float().item())
+                        num_inaccurate_pixels.append(incorrect.sum().cpu().float().item())
                 elif mode == 'argmax':
-                    prediction = unet_output.argmax(1).squeeze()
+                    prediction = unet_output.argmax(1).squeeze().type(torch.cuda.FloatTensor)
                     for idx in range(prediction.shape[0]):
                         mask = (label_batch[idx, :, :] >= 0) & (label_batch[idx, :, :] < self.num_classes)
-                        incorrect = label_batch[idx, mask] != prediction[idx, mask]
+                        incorrect = 1 - prediction[idx, mask]
                         num_inaccurate_pixels.append(incorrect.sum().cpu().float().item())
                 else:
                     raise NotImplementedError
-
         selected_samples = list(zip(*sorted(zip(num_inaccurate_pixels, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
         return selected_samples
 

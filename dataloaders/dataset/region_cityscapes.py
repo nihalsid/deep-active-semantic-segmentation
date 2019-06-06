@@ -28,13 +28,11 @@ class ActiveCityscapesRegion(cityscapes_base.ActiveCityscapesBase):
             for path in self.image_paths:
                 self.current_paths_to_regions_map[path] = [(0, 0, crop_size, crop_size)]
 
-        self.last_added_paths_to_regions_map = self.current_paths_to_regions_map.copy()
         self._update_path_lists()
         self.labeled_pixel_count = crop_size * crop_size * len(self.current_image_paths)
         print(f'# of current_image_paths = {len(self.current_image_paths)}')
 
     def expand_training_set(self, new_regions, labeled_pixels):
-        self.last_added_paths_to_regions_map = OrderedDict(new_regions)
         for path, regions in new_regions.items():
             if path in self.current_paths_to_regions_map:
                 self.current_paths_to_regions_map[path].extend(regions)
@@ -46,7 +44,6 @@ class ActiveCityscapesRegion(cityscapes_base.ActiveCityscapesBase):
     def _update_path_lists(self):
         assert len(self.current_image_paths) == len(list(set(self.current_image_paths))), "updating expanded list"
         self.current_image_paths = list(self.current_paths_to_regions_map.keys())
-        self.last_added_image_paths = list(self.last_added_paths_to_regions_map.keys())
 
     def get_existing_region_maps(self):
         regions = []
@@ -62,10 +59,7 @@ class ActiveCityscapesRegion(cityscapes_base.ActiveCityscapesBase):
         img_path = None
         regions = None
 
-        if self.mode == active_cityscapes.Mode.ALL_BATCHES:
-            img_path, regions = self.current_image_paths[index], self.current_paths_to_regions_map[self.current_image_paths[index]]
-        else:
-            img_path, regions = self.last_added_paths[index], self.last_added_paths_to_regions_map[self.last_added_paths[index]]
+        img_path, regions = self.current_image_paths[index], self.current_paths_to_regions_map[self.current_image_paths[index]]
 
         loaded_npy = None
         with self.env.begin(write=False) as txn:
@@ -79,7 +73,7 @@ class ActiveCityscapesRegion(cityscapes_base.ActiveCityscapesBase):
         for r in regions:
             tr.invert_fix_scale_crop(target_full, target_masked, r, self.crop_size)
 
-        sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target_masked)}
+        sample = {'image': image, 'label': target_masked}
         return self.get_transformed_sample(sample)
 
 if __name__ == "__main__":

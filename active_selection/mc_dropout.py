@@ -9,6 +9,7 @@ from active_selection.base import ActiveSelectionBase
 from tqdm import tqdm
 import constants
 import random
+from scipy import stats
 
 
 class ActiveSelectionMCDropout(ActiveSelectionBase):
@@ -32,10 +33,9 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
                 outputs[:, step, :, :] = torch.argmax(model(image_batch), dim=1)
 
         entropy_maps = []
-
         for i in range(image_batch.shape[0]):
             entropy_map = torch.cuda.FloatTensor(image_batch.shape[2], image_batch.shape[3]).fill_(0)
-            mask = (label_batch[i, :, :] >= 0) & (label_batch[i, :, :] < self.dataset_num_classes)
+            mask = (label_batch[i, :, :] < 0) | (label_batch[i, :, :] >= self.dataset_num_classes)
             for c in range(self.dataset_num_classes):
                 p = torch.sum(outputs[i, :, :, :] == c, dim=0, dtype=torch.float32) / constants.MC_STEPS
                 entropy_map = entropy_map - (p * torch.log2(p + 1e-12))
@@ -70,7 +70,7 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
             zero_out_mask[r0:r1, c0:c1] = 1
             score_maps[i, zero_out_mask] = 0
 
-            if score_maps.max() < 0.1:
+            if score_maps.max() < 0.01:
                 break
 
         return selected_regions, selection_count
@@ -102,14 +102,14 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
 
         map_ctr = 0
         # commented lines are for visualization and verification
-        # entropy_maps = []
-        # base_images = []
+        #entropy_maps = []
+        #base_images = []
         for sample in tqdm(loader):
             image_batch = sample['image'].cuda()
             label_batch = sample['label'].cuda()
             for img_idx, entropy_map in enumerate(self._get_vote_entropy_for_batch(model, image_batch, label_batch)):
                 ActiveSelectionMCDropout.suppress_labeled_entropy(entropy_map, existing_regions[map_ctr])
-                # base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
+                #base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
                 # entropy_maps.append(entropy_map.cpu().numpy())
                 score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(entropy_map.unsqueeze(
                     0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
@@ -143,13 +143,14 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
                 m.train()
         model.apply(turn_on_dropout)
 
-        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
+                            batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
 
         entropies = []
         for sample in tqdm(loader):
             image_batch = sample['image'].cuda()
             label_batch = sample['label'].cuda()
-            entropies.extend([torch.sum(x).cpu().item() / (image_batch.shape[2] * image_batch.shape[3])
+            entropies.extend([torch.mean(x).cpu().item()
                               for x in self._get_vote_entropy_for_batch(model, image_batch, label_batch)])
 
         model.eval()

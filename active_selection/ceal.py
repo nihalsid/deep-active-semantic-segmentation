@@ -27,14 +27,16 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
                 output = model(image_batch)
                 max_conf_batch = torch.max(softmax(output), dim=1)[0]
                 for batch_idx in range(max_conf_batch.shape[0]):
-                    mask = (label_batch[batch_idx, :, :] >= 0) & (label_batch[batch_idx, :, :] < self.dataset_num_classes)
+                    mask = (label_batch[batch_idx, :, :] < 0) | (label_batch[batch_idx, :, :] >= self.dataset_num_classes)
+                    max_conf_batch[batch_idx, mask] = 1
                     # prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
-                    # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :,
-                    # :,:].cpu().numpy(), max_conf_batch[batch_idx, :, :].cpu().numpy(),
-                    # prediction)
-                    max_confidence.append(torch.sum(1 - max_conf_batch[batch_idx, mask]).cpu().item())
+                    # from active_selection import ActiveSelectionMCDropout
+                    # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :, :].cpu().numpy(), max_conf_batch[
+                    #                                            batch_idx, :, :].cpu().numpy(), prediction)
 
-        selected_samples = list(zip(*sorted(zip(max_confidence, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
+                    max_confidence.append(torch.mean(max_conf_batch[batch_idx, :, :]).cpu().item())
+
+        selected_samples = list(zip(*sorted(zip(max_confidence, images), key=lambda x: x[0], reverse=False)))[1][:selection_count]
         return selected_samples
 
     def get_least_margin_samples(self, model, images, selection_count):
@@ -49,24 +51,26 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
                 softmax = torch.nn.Softmax2d()
                 output = softmax(model(image_batch))
                 for batch_idx in range(output.shape[0]):
-                    mask = (label_batch[batch_idx, :, :] >= 0) & (label_batch[batch_idx, :, :] < self.dataset_num_classes)
-                    most_confident_scores = torch.max(output[batch_idx, :, mask].squeeze(), dim=0)[0].cpu().numpy()
+                    mask = (label_batch[batch_idx, :, :] < 0) | (label_batch[batch_idx, :, :] >= self.dataset_num_classes)
+                    mask = mask.cpu().numpy().astype(np.bool)
+                    most_confident_scores = torch.max(output[batch_idx, :, :].squeeze(), dim=0)[0].cpu().numpy()
                     output_numpy = output[batch_idx, :, :, :].cpu().numpy()
                     ndx = np.indices(output_numpy.shape)
                     second_most_confident_scores = output_numpy[output_numpy.argsort(0), ndx[1], ndx[2]][-2]
-                    second_most_confident_scores = second_most_confident_scores[mask]
+                    margin = most_confident_scores - second_most_confident_scores
+                    margin[mask] = 1
+                    # from active_selection import ActiveSelectionMCDropout
                     # prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
-                    # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :,
-                    # :].cpu().numpy(), most_confident_scores - second_most_confident_scores,
-                    # prediction)
-                    margins.append(np.sum(1 - (most_confident_scores - second_most_confident_scores)))
+                    # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :, :].cpu().numpy(), margin, prediction)
+                    margins.append(np.mean(margin))
 
-        selected_samples = list(zip(*sorted(zip(margins, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
+        selected_samples = list(zip(*sorted(zip(margins, images), key=lambda x: x[0], reverse=False)))[1][:selection_count]
         return selected_samples
 
     def _get_entropies(self, model, images):
         model.eval()
-        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size), batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
+                            batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         entropies = []
 
         with torch.no_grad():
@@ -78,14 +82,15 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
                 num_classes = output.shape[1]
 
                 for batch_idx in range(output.shape[0]):
-                    mask = (label_batch[batch_idx, :, :] >= 0) & (label_batch[batch_idx, :, :] < self.dataset_num_classes)
+                    mask = (label_batch[batch_idx, :, :] < 0) | (label_batch[batch_idx, :, :] >= self.dataset_num_classes)
                     entropy_map = torch.cuda.FloatTensor(output.shape[2], output.shape[3]).fill_(0)
                     for c in range(num_classes):
                         entropy_map = entropy_map - (output[batch_idx, c, :, :] * torch.log2(output[batch_idx, c, :, :] + 1e-12))
                     entropy_map[mask] = 0
+                    # from active_selection import ActiveSelectionMCDropout
                     # prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
                     # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
-                    entropies.append(np.sum(entropy_map.cpu().numpy()))
+                    entropies.append(np.mean(entropy_map.cpu().numpy()))
 
         return entropies
 
@@ -98,7 +103,7 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
         import random
         samples1 = self.get_least_confident_samples(model, images, selection_count)
         samples2 = self.get_least_margin_samples(model, images, selection_count)
-        samples3 = self.get_maximum_entropy_samples(model, images, selection_count)
+        samples3 = self.get_maximum_entropy_samples(model, images, selection_count)[0]
         samples = list(set(samples1 + samples2 + samples3))
         random.shuffle(samples)
         return samples[:selection_count]
@@ -106,7 +111,6 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
     def get_weakly_labeled_data(self, model, images, threshold, entropies=None):
         if not entropies:
             entropies = self._get_entropies(model, images)
-
         selected_images = []
         weak_labels = []
         for image, entropy in zip(images, entropies):
@@ -122,7 +126,8 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
                 label_batch = sample['label'].cuda()
                 output = model(image_batch)
                 for batch_idx in range(output.shape[0]):
-                    mask = (label_batch[batch_idx, :, :] >= 0) & (label_batch[batch_idx, :, :] < self.dataset_num_classes)
+                    mask = (label_batch[batch_idx, :, :] < 0) | (label_batch[batch_idx, :, :] >= self.dataset_num_classes)
+                    mask = mask.cpu().numpy().astype(np.bool)
                     prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0).astype(np.uint8)
                     prediction[mask] = 255
                     weak_labels.append(prediction)

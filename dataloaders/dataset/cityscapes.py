@@ -15,12 +15,12 @@ class Cityscapes(cityscapes_base.CityscapesBase):
         super(Cityscapes, self).__init__(path, base_size, crop_size, split, overfit)
         self.memory_hog_mode = True
         if self.memory_hog_mode:
-                self.path_to_npy = {}
-                print('Acquiring dataset in memory')
-                for n in tqdm(self.image_paths):	
-                    with self.env.begin(write=False) as txn:
-                        loaded_npy = pickle.loads(txn.get(n))
-                        self.path_to_npy[n] = loaded_npy
+            self.path_to_npy = {}
+            print('Acquiring dataset in memory')
+            for n in tqdm(self.image_paths):
+                with self.env.begin(write=False) as txn:
+                    loaded_npy = pickle.loads(txn.get(n))
+                    self.path_to_npy[n] = loaded_npy
 
     def __len__(self):
         return len(self.image_paths)
@@ -30,11 +30,11 @@ class Cityscapes(cityscapes_base.CityscapesBase):
         img_path = self.image_paths[index]
 
         loaded_npy = None
-        if self.memory_hog_mode:
-                loaded_npy = self.path_to_npy[img_path]
+        if self.memory_hog_mode and img_path in self.path_to_npy:
+            loaded_npy = self.path_to_npy[img_path]
         else:
-                with self.env.begin(write=False) as txn:
-                    loaded_npy = pickle.loads(txn.get(img_path))
+            with self.env.begin(write=False) as txn:
+                loaded_npy = pickle.loads(txn.get(img_path))
 
         image = loaded_npy[:, :, 0:3]
         target = loaded_npy[:, :, 3]

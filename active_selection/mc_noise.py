@@ -30,7 +30,7 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
 
         for i in range(image_batch.shape[0]):
             entropy_map = torch.cuda.FloatTensor(image_batch.shape[2], image_batch.shape[3]).fill_(0)
-            mask = (label_batch[i, :, :] >= 0) & (label_batch[i, :, :] < self.dataset_num_classes)
+            mask = (label_batch[i, :, :] < 0) | (label_batch[i, :, :] >= self.dataset_num_classes)
             for c in range(self.dataset_num_classes):
                 p = torch.sum(outputs[i, :, :, :] == c, dim=0, dtype=torch.float32) / constants.MC_STEPS
                 entropy_map = entropy_map - (p * torch.log2(p + 1e-12))
@@ -70,15 +70,15 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
 
         for i in range(image_batch.shape[0]):
             entropy_map = torch.cuda.FloatTensor(image_batch.shape[2], image_batch.shape[3]).fill_(0)
-            mask = (label_batch[i, :, :] >= 0) & (label_batch[i, :, :] < self.dataset_num_classes)
+            mask = (label_batch[i, :, :] < 0) | (label_batch[i, :, :] >= self.dataset_num_classes)
             for c in range(self.dataset_num_classes):
                 p = torch.sum(outputs[i, :, :, :] == c, dim=0, dtype=torch.float32) / constants.MC_STEPS
                 entropy_map = entropy_map - (p * torch.log2(p + 1e-12))
             entropy_map[mask] = 0
             # visualize for debugging
 
-            # prediction = stats.mode(outputs[i, :, :, :].cpu().numpy(), axis=0)[0].squeeze()
-            # self._visualize_entropy(image_batch[i, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
+            #prediction = stats.mode(outputs[i, :, :, :].cpu().numpy(), axis=0)[0].squeeze()
+            #self._visualize_entropy(image_batch[i, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
             entropy_maps.append(entropy_map)
         model.module.set_noisy_features(False)
         return entropy_maps
@@ -99,7 +99,7 @@ class ActiveSelectionMCNoise(ActiveSelectionBase):
 
         for i in range(image_batch.shape[0]):
             entropy_map = torch.cuda.FloatTensor(image_batch.shape[2], image_batch.shape[3]).fill_(0)
-            mask = (label_batch[i, :, :] >= 0) & (label_batch[i, :, :] < self.dataset_num_classes)
+            mask = (label_batch[i, :, :] < 0) | (label_batch[i, :, :] >= self.dataset_num_classes)
             for c in range(self.dataset_num_classes):
                 p = torch.sum(outputs[i, :, :, :] == c, dim=0, dtype=torch.float32) / constants.MC_STEPS
                 entropy_map = entropy_map - (p * torch.log2(p + 1e-12))

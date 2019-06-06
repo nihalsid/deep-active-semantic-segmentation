@@ -57,7 +57,7 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
 
         loaded_npy = None
 
-        if self.memory_hog_mode:
+        if self.memory_hog_mode and img_path in self.path_to_npy:
             loaded_npy = self.path_to_npy[img_path]
         else:
             with self.env.begin(write=False) as txn:

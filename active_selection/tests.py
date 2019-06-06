@@ -97,7 +97,7 @@ def test_entropy_map_for_images():
     # validation(model, DataLoader(train_set, batch_size=2, shuffle=False), args)
 
     active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    print(active_selector.get_vote_entropy_for_images(model, train_set.current_image_paths[:36]))
+    print(active_selector.get_vote_entropy_for_images(model, train_set.current_image_paths[:10], 5))
 
 
 def test_nms():
@@ -353,7 +353,7 @@ def test_ceal():
     args = {
         'base_size': 513,
         'crop_size': 513,
-        'seed_set': 'set_dummy.txt',
+        'seed_set': 'set_0.txt',
         'batch_size': 12,
         'cuda': True
     }
@@ -372,12 +372,12 @@ def test_ceal():
                                          'base_0-deeplab-mobilenet-bs12-513x513', 'model_best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     active_selector = ActiveSelectionCEAL(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    # print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:20], 3))
-    # print(active_selector.get_least_margin_samples(model, train_set.current_image_paths[:20], 3))
-    # print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths[:20], 3))
+    # print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:10], 5))
+    # print(active_selector.get_least_margin_samples(model, train_set.current_image_paths[:10], 5))
+    # print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths[:10], 5))
     # print(active_selector.get_fusion_of_confidence_margin_entropy_samples(model, train_set.current_image_paths[:20], 3))
-    weak_labels = active_selector.get_weakly_labeled_data(model, train_set.remaining_image_paths[:50], 0.70)
-    train_set.add_weak_labels(weak_labels)
+    #weak_labels = active_selector.get_weakly_labeled_data(model, train_set.remaining_image_paths[:50], 0.70)
+    # train_set.add_weak_labels(weak_labels)
 
     dataloader = DataLoader(train_set, batch_size=10, shuffle=False, num_workers=0)
     for i, sample in enumerate(dataloader):
@@ -392,8 +392,7 @@ def test_ceal():
             plt.imshow(image_unnormalized)
             plt.subplot(212)
             plt.imshow(gt_colored)
-
-    plt.show(block=True)
+            plt.show(block=True)
 
 
 def test_max_set_cover():
@@ -712,13 +711,13 @@ def test_accuracy_est_selector():
             plt.imshow(map_segmentation_to_colors(np.array(dl_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'cityscapes'))
             plt.subplot(235)
             plt.imshow(map_segmentation_to_colors(np.array(un_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'binary'))
-            plt.show(block=True)
+            # plt.show(block=True)
 
         if i == 1:
             break
 
     active_selector = ActiveSelectionAccuracy(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    print(active_selector.get_least_accurate_samples(model, train_set.current_image_paths[:10], 5, 'argmax'))
+    print(active_selector.get_least_accurate_samples(model, train_set.current_image_paths[:10], 5, 'softmax'))
 
 
 def test_noisy_create_region_maps_with_region_cityscapes():
@@ -781,17 +780,17 @@ def test_noisy_create_region_maps_with_region_cityscapes():
 
 
 if __name__ == '__main__':
-    test_entropy_map_for_images()
-    test_nms()
-    test_create_region_maps_with_region_cityscapes()
+    # test_entropy_map_for_images()
+    # test_nms()
+    # test_create_region_maps_with_region_cityscapes()
     # test_visualize_feature_space()
     # test_core_set()
     # test_kcenter()
-    # test_ceal()
+    test_ceal()
     # test_max_set_cover()
     # test_region_features()
     # test_image_features()
-    test_entropy_map_for_images_with_noise_and_ve()
-    test_accuracy_selector()
-    test_noisy_create_region_maps_with_region_cityscapes()
-    test_accuracy_est_selector()
+    # test_entropy_map_for_images_with_noise_and_ve()
+    # test_accuracy_selector()
+    # test_noisy_create_region_maps_with_region_cityscapes()
+    # test_accuracy_est_selector()
