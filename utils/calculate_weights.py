@@ -16,15 +16,14 @@ def calculate_weights_labels(dataset, dataloader, num_classes):
         labels = y[mask].astype(np.uint8)
         count_l = np.bincount(labels, minlength=num_classes)
         z += count_l
-
+    z = np.log(z)
     total_frequency = np.sum(z)
-    clas_weights = []
+    class_weights = []
 
     for frequency in z:
         class_weight = 1 / (np.log(1.02 + (frequency / total_frequency)))
-        clas_weights.append(class_weight)
+        class_weights.append(class_weight)
     print('Class weights: ')
-    print(clas_weights)
+    print(class_weights)
 
-    ret = np.array(clas_weights)
     return ret
