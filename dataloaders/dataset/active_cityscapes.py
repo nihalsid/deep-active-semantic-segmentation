@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
 
-    def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
+    def __init__(self, path, base_size, crop_size, split, init_set, overfit=False, memory_hog_mode=True):
 
         super(ActiveCityscapesImage, self).__init__(path, base_size, crop_size, split, overfit)
         self.current_image_paths = self.image_paths
@@ -30,7 +30,7 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
                 print(f'# of current_image_paths = {len(self.current_image_paths)}, # of remaining_image_paths = {len(self.remaining_image_paths)}')
         #self.current_image_paths = self.current_image_paths[:5]
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
-        self.memory_hog_mode = True
+        self.memory_hog_mode = memory_hog_mode
         if self.memory_hog_mode:
             self.path_to_npy = {}
             self.load_files_into_memory()

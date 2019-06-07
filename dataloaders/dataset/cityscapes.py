@@ -10,10 +10,10 @@ import pickle
 
 class Cityscapes(cityscapes_base.CityscapesBase):
 
-    def __init__(self, path, base_size, crop_size, split, overfit=False):
+    def __init__(self, path, base_size, crop_size, split, overfit=False, memory_hog_mode=True):
 
         super(Cityscapes, self).__init__(path, base_size, crop_size, split, overfit)
-        self.memory_hog_mode = True
+        self.memory_hog_mode = memory_hog_mode
         if self.memory_hog_mode:
             self.path_to_npy = {}
             print('Acquiring dataset in memory')

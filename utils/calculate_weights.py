@@ -25,5 +25,5 @@ def calculate_weights_labels(dataset, dataloader, num_classes):
         class_weights.append(class_weight)
     print('Class weights: ')
     print(class_weights)
-
+    ret = np.array(class_weights)
     return ret

@@ -272,6 +272,7 @@ def main():
     parser.add_argument('--weak-label-entropy-threshold', type=float, default=0.80, help='initial threshold for entropy for weak labels')
     parser.add_argument('--weak-label-threshold-decay', type=float, default=0.015, help='decay for threshold on weak labels')
     parser.add_argument('--monitor-directory', type=str, default=None)
+    parser.add_argument('--memory_hog', action='store_true', default=False, help='memory_hog mode')
 
     args = parser.parse_args()
 
@@ -328,7 +329,7 @@ def main():
     # manual seeding
     torch.manual_seed(args.seed)
 
-    kwargs = {'pin_memory': False, 'init_set': args.seed_set}
+    kwargs = {'pin_memory': False, 'init_set': args.seed_set, 'memory_hog': args.memory_hog}
     dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.workers, args.overfit, **kwargs)
 
     training_set = dataloaders[0]
