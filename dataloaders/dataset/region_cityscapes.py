@@ -85,6 +85,14 @@ class ActiveCityscapesRegion(cityscapes_base.ActiveCityscapesBase):
         sample = {'image': image, 'label': target_masked}
         return self.get_transformed_sample(sample)
 
+    def load_files_into_memory(self):
+        print('Acquiring dataset in memory')
+        for n in tqdm(self.current_image_paths):
+            if n not in self.path_to_npy:
+                with self.env.begin(write=False) as txn:
+                    loaded_npy = pickle.loads(txn.get(n))
+                    self.path_to_npy[n] = loaded_npy
+
 if __name__ == "__main__":
 
     from torch.utils.data import DataLoader
