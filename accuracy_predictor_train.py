@@ -330,6 +330,7 @@ def main():
     parser.add_argument('--weight-unet', type=float, default=0.30, help='unet loss weight')
     parser.add_argument('--weight-wrong-label-unet', type=float, default=0.75, help='unet loss weight')
     parser.add_argument('--accuracy-selection', type=str, default='softmax', choices=['softmax', 'argmax'], help='selection based on soft or hard scores')
+    parser.add_argument('--memory-hog', action='store_true', default=False, help='memory_hog mode')
 
     args = parser.parse_args()
 
@@ -383,7 +384,7 @@ def main():
             w_dl[i] = 0.5
             w_un[i] = 0.5
 
-    kwargs = {'pin_memory': False, 'init_set': args.seed_set}
+    kwargs = {'pin_memory': False, 'init_set': args.seed_set, 'memory_hog': args.memory_hog}
     dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.workers, args.overfit, **kwargs)
 
     training_set = dataloaders[0]
