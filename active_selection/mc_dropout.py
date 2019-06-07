@@ -117,7 +117,7 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
 
         min_val = score_maps.min()
         max_val = score_maps.max()
-        minmax_norm = lambda x: x.add_(min_val).mul_(1.0 / (max_val - min_val))
+        minmax_norm = lambda x: x.add_(-min_val).mul_(1.0 / (max_val - min_val))
         minmax_norm(score_maps)
 
         num_requested_indices = (selection_size * self.crop_size * self.crop_size) / (region_size * region_size)
