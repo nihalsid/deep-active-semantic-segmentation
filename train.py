@@ -32,7 +32,7 @@ class Trainer(object):
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
 
-        kwargs = {'pin_memory': False}
+        kwargs = {'pin_memory': False, 'memory_hog': args.memory_hog}
         self.train_set, self.train_loader, self.val_loader, self.test_loader, self.nclass = make_dataloader(
             args.dataset, args.base_size, args.crop_size, args.batch_size, args.workers, args.overfit, **kwargs)
 
@@ -270,6 +270,7 @@ def main():
     parser.add_argument('--overfit', action='store_true', default=False,
                                             help='overfit to one sample')
     parser.add_argument('--architecture', type=str, default='deeplab', choices=['deeplab', 'enet', 'fastscnn'])
+    parser.add_argument('--memory-hog', action='store_true', default=False, help='memory_hog mode')
 
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
