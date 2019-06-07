@@ -8,6 +8,7 @@ from utils.cityscapes_to_lmdb import CITYSCAPES_IGNORE_INDEX
 import constants
 import os
 from dataloaders import custom_transforms as tr
+from tqdm import tqdm
 
 
 class ActiveCityscapesRegion(cityscapes_base.ActiveCityscapesBase):
