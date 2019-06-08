@@ -26,7 +26,7 @@ class CityscapesBase(data.Dataset):
         if crop_size == -1:
             self.scalecrop = tr.Scale(base_size=self.base_size)
         else:
-            self.scalecrop = tr.FixScaleCrop(crop_size=self.crop_size),
+            self.scalecrop = tr.FixScaleCrop(crop_size=self.crop_size)
 
         if overfit:
             self.image_paths = self.image_paths[:1]
