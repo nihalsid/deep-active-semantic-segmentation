@@ -19,6 +19,7 @@ from active_selection import get_active_selection_class
 import constants
 import sys
 from utils.early_stop import EarlyStopChecker
+from utils.calculate_weights import calculate_weights_labels
 
 
 class Trainer(object):
