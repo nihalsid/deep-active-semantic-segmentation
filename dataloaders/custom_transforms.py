@@ -145,7 +145,7 @@ class FixScaleCrop(object):
         mask = sample['label']
         w, h = img.shape[1], img.shape[0]
 
-        if w > h:
+        if w > h:  # h = 1024, w = 2048, oh = 512, ow = 1024
             oh = self.crop_size
             ow = int(1.0 * w * oh / h)
         else:
@@ -161,6 +161,30 @@ class FixScaleCrop(object):
         y1 = int(round((h - self.crop_size) / 2.))
         img = img[y1: y1 + self.crop_size, x1: x1 + self.crop_size, :]
         mask = mask[y1: y1 + self.crop_size, x1: x1 + self.crop_size]
+
+        return {'image': img,
+                'label': mask}
+
+
+class Scale(object):
+
+    def __init__(self, base_size):
+        self.base_size = base_size
+
+    def __call__(self, sample):
+        img = sample['image']
+        mask = sample['label']
+        w, h = img.shape[1], img.shape[0]
+
+        if w > h:  # h = 1024, w = 2048, oh = 512, ow = 1024
+            oh = self.base_size
+            ow = int(1.0 * w * oh / h)
+        else:
+            ow = self.base_size
+            oh = int(1.0 * h * ow / w)
+
+        img = imresize(img, (oh, ow))
+        mask = imresize(mask, (oh, ow), 'nearest')
 
         return {'image': img,
                 'label': mask}
