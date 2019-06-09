@@ -273,6 +273,7 @@ def main():
     parser.add_argument('--weak-label-threshold-decay', type=float, default=0.015, help='decay for threshold on weak labels')
     parser.add_argument('--monitor-directory', type=str, default=None)
     parser.add_argument('--memory-hog', action='store_true', default=False, help='memory_hog mode')
+    parser.add_argument('--no-early-stop', action='store_true', default=False, help='no early stopping')
 
     args = parser.parse_args()
 
@@ -380,7 +381,8 @@ def main():
 
         trainer.initialize()
 
-        early_stop = EarlyStopChecker(patience=5, min_improvement=args.min_improvement)
+        if not args.no_early_stop:
+            early_stop = EarlyStopChecker(patience=5, min_improvement=args.min_improvement)
 
         best_mIoU = 0
         best_Acc = 0
@@ -400,10 +402,12 @@ def main():
                 best_Acc_class = Acc_class
             if FWIoU > best_FWIoU:
                 best_FWIoU = FWIoU
-            # check for early stopping
-            if early_stop(mIoU):
-                print(f'Early stopping triggered after {outer_epoch * args.eval_interval + inner_epoch} epochs')
-                break
+
+            if not args.no_early_stop:
+                # check for early stopping
+                if early_stop(mIoU):
+                    print(f'Early stopping triggered after {outer_epoch * args.eval_interval + inner_epoch} epochs')
+                    break
 
         training_set.reset_dataset()
 
@@ -418,6 +422,10 @@ def main():
 
         trainer.writer.close()
         trainer.model.eval()
+
+        if selection_iter == (total_active_selection_iterations - 1):
+            break
+
         if args.active_selection_mode == 'random':
             training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths, args.active_batch_size))
         elif args.active_selection_mode == 'variance' or args.active_selection_mode == 'variance_representative':
