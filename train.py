@@ -15,6 +15,7 @@ from utils.lr_scheduler import LR_Scheduler
 from utils.saver import PassiveSaver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
+import torch.optim.lr_scheduler as lr_scheduler
 
 import constants
 
@@ -55,7 +56,7 @@ class Trainer(object):
         if args.optimizer == 'SGD':
             optimizer = torch.optim.SGD(train_params, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
         elif args.optimizer == 'Adam':
-            optimizer = torch.optim.Adam(train_params)
+            optimizer = torch.optim.Adam(train_params, weight_decay=args.weight_decay)
         else:
             raise NotImplementedError
 
@@ -70,8 +71,10 @@ class Trainer(object):
 
         self.evaluator = Evaluator(self.nclass)
 
-        if args.use_lr_scheduler:
+        if args.use_lr_scheduler and args.lr_scheduler == 'poly':
             self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr, args.epochs, len(self.train_loader))
+        if args.use_lr_scheduler and args.lr_scheduler == 'step':
+            self.scheduler = lr_scheduler.StepLR(self.optimizer, args.epochs // 3, 0.1)
         else:
             self.scheduler = None
 
@@ -106,8 +109,11 @@ class Trainer(object):
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             if self.scheduler:
-                self.scheduler(self.optimizer, i, epoch, self.best_pred)
-                self.writer.add_scalar('train/learning_rate', self.scheduler.current_lr, i + num_img_tr * epoch)
+                if self.args.lr_scheduler == 'poly':
+                    self.scheduler(self.optimizer, i, epoch, self.best_pred)
+                    self.writer.add_scalar('train/learning_rate', self.scheduler.current_lr, i + num_img_tr * epoch)
+                else:
+                    self.scheduler.step()
             self.optimizer.zero_grad()
             output = self.model(image)
             loss = self.criterion(output, target)
