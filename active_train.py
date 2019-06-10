@@ -48,7 +48,7 @@ class Trainer(object):
         if args.optimizer == 'SGD':
             optimizer = torch.optim.SGD(train_params, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
         elif args.optimizer == 'Adam':
-            optimizer = torch.optim.Adam(train_params)
+            optimizer = torch.optim.Adam(train_params, weight_decay=args.weight_decay)
         else:
             raise NotImplementedError
 
