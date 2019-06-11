@@ -74,7 +74,8 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
         for sample in tqdm(loader):
             image_batch = sample['image'].cuda()
             label_batch = sample['label'].cuda()
-            deeplab_output, unet_output = model(image_batch)
+            with torch.no_grad():
+                deeplab_output, unet_output = model(image_batch)
             prediction = softmax(unet_output)
             unet_input = torch.cuda.FloatTensor(torch.cat([softmax(deeplab_output), image_batch], dim=1).detach().cpu().numpy())
             unet_input.requires_grad = True
@@ -95,15 +96,16 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
 
         softmax = torch.nn.Softmax2d()
         scores = []
-        for sample in tqdm(loader):
-            image_batch = sample['image'].cuda()
-            label_batch = sample['label'].cuda()
-            deeplab_output, unet_output = model(image_batch)
-            prediction = softmax(unet_output)
-            for idx in range(prediction.shape[0]):
-                mask = (label_batch[idx, :, :] >= 0) & (label_batch[idx, :, :] < self.num_classes)
-                y = 4 * prediction[idx, 1, mask] - 4 * prediction[idx, 1, mask] ** 2
-                scores.append(y.mean().cpu().float().item())
+        with torch.no_grad():
+            for sample in tqdm(loader):
+                image_batch = sample['image'].cuda()
+                label_batch = sample['label'].cuda()
+                deeplab_output, unet_output = model(image_batch)
+                prediction = softmax(unet_output)
+                for idx in range(prediction.shape[0]):
+                    mask = (label_batch[idx, :, :] >= 0) & (label_batch[idx, :, :] < self.num_classes)
+                    y = 4 * prediction[idx, 1, mask] - 4 * prediction[idx, 1, mask] ** 2
+                    scores.append(y.mean().cpu().float().item())
         selected_samples = list(zip(*sorted(zip(scores, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
         print(scores)
         return selected_samples
