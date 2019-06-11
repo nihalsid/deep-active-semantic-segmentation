@@ -779,6 +779,209 @@ def test_noisy_create_region_maps_with_region_cityscapes():
     plt.show(block=True)
 
 
+def test_gradient_visualization():
+    import matplotlib.pyplot as plt
+    from dataloaders.utils import map_segmentations_to_colors, map_segmentation_to_colors, map_binary_output_mask_to_colors
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': '',
+        'seed_set': 'set_dummy.txt',
+        'batch_size': 1
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+
+    model = DeepLabAccuracyPredictor(backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
+                                         'albnf_15-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0031', 'best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+    softmax = nn.Softmax(dim=1)
+
+    for i, sample in enumerate(dataloader):
+        print(train_set.current_image_paths[i])
+        image_batch = sample['image'].cuda()
+        #image_batch.requires_grad = True
+        dl_out, un_out = model(image_batch)
+        un_in = torch.cuda.FloatTensor(torch.cat([softmax(dl_out), image_batch], dim=1).detach().cpu().numpy())
+        un_in.requires_grad = True
+        un_clean_out = model.module.unet(un_in)
+
+        un_clean_out.backward(torch.ones_like(un_clean_out).cuda())
+
+        grad = torch.norm(un_in.grad, p=2, dim=1)
+        min_val = grad.min()
+        max_val = grad.max()
+        minmax_norm = lambda x: x.add_(-min_val).mul_(1.0 / (max_val - min_val))
+        minmax_norm(grad)
+        un_target = dl_out.argmax(1).cpu().squeeze() == sample['label'].long()
+        un_target[sample['label'] == 255] = 255
+        for j in range(sample['image'].size()[0]):
+            image = sample['image'].cpu().numpy()
+            gt = sample['label'].cpu().numpy()
+            gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), 'cityscapes')
+            image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
+            plt.figure()
+            plt.title('plot')
+            plt.subplot(231)
+            plt.imshow(image_unnormalized)
+            plt.subplot(232)
+            plt.imshow(map_segmentation_to_colors(np.array(un_target.numpy()[j]).astype(np.uint8), 'binary'))
+            plt.subplot(233)
+            plt.imshow(gt_colored)
+            plt.subplot(234)
+            plt.imshow(grad[j, :, :].cpu().numpy(), cmap='gray')
+            plt.subplot(236)
+            plt.imshow(map_segmentation_to_colors(np.array(dl_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'cityscapes'))
+            plt.subplot(235)
+            plt.imshow(map_segmentation_to_colors(np.array(un_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'binary'))
+            plt.show(block=True)
+
+        if i == 1:
+            break
+
+
+def test_gradient_selection():
+    import matplotlib.pyplot as plt
+    from dataloaders.utils import map_segmentations_to_colors, map_segmentation_to_colors, map_binary_output_mask_to_colors
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 1
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+
+    model = DeepLabAccuracyPredictor(backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
+                                         'albnf_15-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0031', 'best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+    softmax = nn.Softmax(dim=1)
+
+    for i, sample in enumerate(dataloader):
+        image_batch = sample['image'].cuda()
+        dl_out, un_out = model(image_batch)
+        un_target = dl_out.argmax(1).cpu().squeeze() == sample['label'].long()
+        un_target[sample['label'] == 255] = 255
+        print(train_set.current_image_paths[i], (un_target == 0).sum())
+        for j in range(sample['image'].size()[0]):
+            image = sample['image'].cpu().numpy()
+            gt = sample['label'].cpu().numpy()
+            gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), 'cityscapes')
+            image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
+            plt.figure()
+            plt.title('plot')
+            plt.subplot(231)
+            plt.imshow(image_unnormalized)
+            plt.subplot(232)
+            plt.imshow(map_segmentation_to_colors(np.array(un_target.numpy()[j]).astype(np.uint8), 'binary'))
+            plt.subplot(233)
+            plt.imshow(gt_colored)
+            plt.subplot(236)
+            plt.imshow(map_segmentation_to_colors(np.array(dl_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'cityscapes'))
+            plt.subplot(235)
+            plt.imshow(map_segmentation_to_colors(np.array(un_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'binary'))
+            # plt.show(block=True)
+
+        if i == 10:
+            break
+
+    active_selector = ActiveSelectionAccuracy(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    print(active_selector.get_adversarially_vulnarable_samples(model, train_set.current_image_paths[:10], 5))
+
+
+def test_unsure_samples():
+    import matplotlib.pyplot as plt
+    from dataloaders.utils import map_segmentations_to_colors, map_segmentation_to_colors, map_binary_output_mask_to_colors
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 1
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+
+    model = DeepLabAccuracyPredictor(backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
+                                         'albnf_15-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0031', 'best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+    softmax = nn.Softmax(dim=1)
+
+    with torch.no_grad():
+        for i, sample in enumerate(dataloader):
+            image_batch = sample['image'].cuda()
+            dl_out, un_out = model(image_batch)
+            prediction = softmax(un_out)
+            un_target = dl_out.argmax(1).cpu().squeeze() == sample['label'].long()
+            un_target[sample['label'] == 255] = 255
+            unsure = 4 * prediction[:, 1, :, :] - 4 * prediction[:, 1, :, :] ** 2
+            print(train_set.current_image_paths[i], (un_target == 0).sum())
+            for j in range(sample['image'].size()[0]):
+                image = sample['image'].cpu().numpy()
+                gt = sample['label'].cpu().numpy()
+                gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), 'cityscapes')
+                image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
+                plt.figure()
+                plt.title('plot')
+                plt.subplot(231)
+                plt.imshow(image_unnormalized)
+                plt.subplot(232)
+                plt.imshow(map_segmentation_to_colors(np.array(un_target.numpy()[j]).astype(np.uint8), 'binary'))
+                plt.subplot(233)
+                plt.imshow(gt_colored)
+                plt.subplot(234)
+                min_val = unsure[j, :, :].min()
+                max_val = unsure[j, :, :].max()
+                minmax_norm = lambda x: x.add_(-min_val).mul_(1.0 / (max_val - min_val))
+                minmax_norm(unsure[j, :, :])
+                plt.imshow(unsure[j, :, :].cpu().numpy(), cmap='gray')
+                plt.subplot(236)
+                plt.imshow(map_segmentation_to_colors(np.array(dl_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'cityscapes'))
+                plt.subplot(235)
+                plt.imshow(map_segmentation_to_colors(np.array(un_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'binary'))
+                plt.show(block=True)
+
+            if i == 10:
+                break
+
+    active_selector = ActiveSelectionAccuracy(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    print(active_selector.get_unsure_samples(model, train_set.current_image_paths[:10], 5))
+
+
 if __name__ == '__main__':
     # test_entropy_map_for_images()
     # test_nms()
@@ -786,7 +989,7 @@ if __name__ == '__main__':
     # test_visualize_feature_space()
     # test_core_set()
     # test_kcenter()
-    test_ceal()
+    # test_ceal()
     # test_max_set_cover()
     # test_region_features()
     # test_image_features()
@@ -794,3 +997,6 @@ if __name__ == '__main__':
     # test_accuracy_selector()
     # test_noisy_create_region_maps_with_region_cityscapes()
     # test_accuracy_est_selector()
+    # test_gradient_selection()
+    # test_gradient_visualization()
+    test_unsure_samples()

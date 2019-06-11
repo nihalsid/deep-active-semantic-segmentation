@@ -332,6 +332,8 @@ def main():
     parser.add_argument('--weight-wrong-label-unet', type=float, default=0.75, help='unet loss weight')
     parser.add_argument('--accuracy-selection', type=str, default='softmax', choices=['softmax', 'argmax'], help='selection based on soft or hard scores')
     parser.add_argument('--memory-hog', action='store_true', default=False, help='memory_hog mode')
+    parser.add_argument('--active-selection-mode', type=str, default='accuracy',
+                        choices=['accuracy', 'gradient', 'uncertain', 'uncertain_gradient'], help='method to select new samples')
 
     args = parser.parse_args()
 
@@ -476,13 +478,30 @@ def main():
         trainer.writer.close()
         trainer.model.eval()
 
-        print('Estimating accuracies..')
-
-        selected_images = active_selector.get_least_accurate_samples(
-            trainer.model, training_set.remaining_image_paths, args.active_batch_size, args.accuracy_selection)
-        training_set.expand_training_set(selected_images)
+        if args.active_selection_mode == 'accuracy':
+            print('Estimating accuracies..')
+            selected_images = active_selector.get_least_accurate_samples(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size, args.accuracy_selection)
+            training_set.expand_training_set(selected_images)
+        elif args.active_selection_mode == 'gradient':
+            print('Estimating gradients..')
+            selected_images = active_selector.get_adversarially_vulnarable_samples(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size)
+            training_set.expand_training_set(selected_images)
+        elif args.active_selection_mode == 'uncertain':
+            print('Estimating uncertainities..')
+            selected_images = active_selector.get_unsure_samples(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size)
+            training_set.expand_training_set(selected_images)
+        elif args.active_selection_mode == 'uncertain_gradient':
+            print('Estimating uncertainities..')
+            selected_images = active_selector.get_unsure_samples(
+                trainer.model, training_set.remaining_image_paths, args.active_batch_size * 2)
+            print('Estimating gradients..')
+            selected_images = active_selector.get_adversarially_vulnarable_samples(
+                trainer.model, selected_images, args.active_batch_size)
+            training_set.expand_training_set(selected_images)
         torch.cuda.empty_cache()
-
     writer.close()
 
 if __name__ == "__main__":

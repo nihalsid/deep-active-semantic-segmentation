@@ -19,7 +19,6 @@ from utils.metrics import Evaluator
 import constants
 import sys
 from utils.early_stop import EarlyStopChecker
-import torch.optim.lr_scheduler as lr_scheduler
 
 
 class Trainer(object):
@@ -64,10 +63,8 @@ class Trainer(object):
 
         self.evaluator = Evaluator(self.nclass)
 
-        if args.use_lr_scheduler and args.lr_scheduler == 'poly':
+        if args.use_lr_scheduler:
             self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr, args.epochs, len(self.train_loader))
-        if args.use_lr_scheduler and args.lr_scheduler == 'step':
-            self.scheduler = lr_scheduler.StepLR(self.optimizer, args.epochs // 3, 0.1)
         else:
             self.scheduler = None
 
@@ -90,11 +87,8 @@ class Trainer(object):
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             if self.scheduler:
-                if self.args.lr_scheduler == 'poly':
-                    self.scheduler(self.optimizer, i, epoch, self.best_pred)
-                    self.writer.add_scalar('train/learning_rate', self.scheduler.current_lr, i + num_img_tr * epoch)
-                else:
-                    self.scheduler.step()
+                self.scheduler(self.optimizer, i, epoch, self.best_pred)
+                self.writer.add_scalar('train/learning_rate', self.scheduler.current_lr, i + num_img_tr * epoch)
             self.optimizer.zero_grad()
             output = self.model(image)
             loss = self.criterion(output, target)
@@ -304,7 +298,7 @@ def main():
         epoches = {
             'coco': 30,
             'cityscapes': 200,
-            'active_cityscapes': 50,
+            'active_cityscapes': 200,
             'pascal': 50,
         }
         args.epochs = epoches[args.dataset.lower()]

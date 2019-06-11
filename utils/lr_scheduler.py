@@ -35,9 +35,9 @@ class LR_Scheduler(object):
         print('Using {} LR Scheduler!'.format(self.mode))
         self.lr = base_lr
         self.current_lr = base_lr
-        if mode == 'step':
-            assert lr_step
         self.lr_step = lr_step
+        if lr_step == 0:
+            self.lr_step = num_epochs // 3
         self.iters_per_epoch = iters_per_epoch
         self.N = num_epochs * iters_per_epoch
         self.epoch = -1
