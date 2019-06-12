@@ -17,15 +17,15 @@ class TensorboardSummary:
         writer = SummaryWriter(log_dir=self.directory)
         return writer
 
-    def visualize_image(self, writer, dataset, image, target, output, global_step):
+    def visualize_image(self, writer, dataset, image, target, output, global_step, prefix='val'):
         grid_image = make_grid(image[:3].clone().cpu().data, 3, normalize=True)
-        writer.add_image('Image', grid_image, global_step)
+        writer.add_image(f'{prefix}/Image', grid_image, global_step)
         grid_image = make_grid(map_segmentations_to_colors(torch.max(output[:3], 1)[
                                1].detach().cpu().numpy(), dataset=dataset), 3, normalize=False, range=(0, 255))
-        writer.add_image('Predicted label', grid_image, global_step)
+        writer.add_image(f'{prefix}/Prediction', grid_image, global_step)
         grid_image = make_grid(map_segmentations_to_colors(torch.squeeze(
             target[:3], 1).detach().cpu().numpy(), dataset=dataset), 3, normalize=False, range=(0, 255))
-        writer.add_image('Groundtruth label', grid_image, global_step)
+        writer.add_image(f'{prefix}/Groundtruth', grid_image, global_step)
 
     def visualize_image_with_unet(self, writer, dataset, image, target_0, output_0, target_1, output_1, global_step):
         grid_image = make_grid(image[:3].clone().cpu().data, 3, normalize=True)

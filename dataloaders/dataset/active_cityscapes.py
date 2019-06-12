@@ -99,8 +99,8 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from dataloaders.utils import map_segmentation_to_colors
     path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
-    crop_size = 513
-    base_size = 513
+    crop_size = -1
+    base_size = 1024
     split = 'train'
 
     cityscapes_train = ActiveCityscapesImage(path, base_size, crop_size, split, 'set_0.txt')

@@ -13,7 +13,7 @@ from dataloaders import custom_transforms as tr
 class ActivePascalRegion(pascal_base.ActivePascalBase):
 
     # TODO: add support for weak labeling
-    def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
+    def __init__(self, path, base_size, crop_size, split, init_set, overfit=False, memory_hog_mode=True):
 
         super(ActivePascalRegion, self).__init__(path, base_size, crop_size, split, overfit)
         self.current_paths_to_regions_map = OrderedDict({})
@@ -27,6 +27,11 @@ class ActivePascalRegion(pascal_base.ActivePascalBase):
         else:
             for path in self.image_paths:
                 self.current_paths_to_regions_map[path] = [(0, 0, crop_size, crop_size)]
+
+        self.memory_hog_mode = memory_hog_mode
+        if self.memory_hog_mode:
+            self.path_to_npy = {}
+            self.load_files_into_memory()
 
         self._update_path_lists()
         self.labeled_pixel_count = crop_size * crop_size * len(self.current_image_paths)
@@ -54,6 +59,14 @@ class ActivePascalRegion(pascal_base.ActivePascalBase):
                 regions.append([])
         return regions
 
+    def load_files_into_memory(self):
+        print('Acquiring dataset in memory')
+        for n in tqdm(self.current_image_paths):
+            if n not in self.path_to_npy:
+                with self.env.begin(write=False) as txn:
+                    loaded_npy = pickle.loads(txn.get(n))
+                    self.path_to_npy[n] = loaded_npy
+
     def __getitem__(self, index):
 
         img_path = None
@@ -62,8 +75,11 @@ class ActivePascalRegion(pascal_base.ActivePascalBase):
         img_path, regions = self.current_image_paths[index], self.current_paths_to_regions_map[self.current_image_paths[index]]
 
         loaded_npy = None
-        with self.env.begin(write=False) as txn:
-            loaded_npy = pickle.loads(txn.get(img_path))
+        if self.memory_hog_mode and img_path in self.path_to_npy:
+            loaded_npy = self.path_to_npy[img_path]
+        else:
+            with self.env.begin(write=False) as txn:
+                loaded_npy = pickle.loads(txn.get(img_path))
 
         image = loaded_npy[:, :, 0:3]
         target_full = loaded_npy[:, :, 3]

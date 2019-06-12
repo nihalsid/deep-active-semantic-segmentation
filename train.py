@@ -15,6 +15,7 @@ from utils.lr_scheduler import LR_Scheduler
 from utils.saver import PassiveSaver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
+import random
 
 import constants
 
@@ -101,6 +102,12 @@ class Trainer(object):
         self.model.train()
         num_img_tr = len(self.train_loader)
         tbar = tqdm(self.train_loader, desc='\r')
+
+        visualization_index = int(random.random() * len(self.val_loader))
+        vis_img = None
+        vis_tgt = None
+        vis_out = None
+
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
@@ -118,12 +125,14 @@ class Trainer(object):
             tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
             self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
-            if num_img_tr > 10:
-                if i % (num_img_tr // 10) == 0:
-                    global_step = i + num_img_tr * epoch
-                    self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
+            if i == visualization_index:
+                vis_img = image
+                vis_tgt = target
+                vis_out = output
 
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
+        self.summary.visualize_image(self.writer, self.args.dataset, vis_img, vis_tgt, vis_out, epoch, prefix='train')
+
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
         print('BestPred: %.3f' % self.best_pred)
@@ -146,6 +155,11 @@ class Trainer(object):
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
 
+        visualization_index = int(random.random() * len(self.val_loader))
+        vis_img = None
+        vis_tgt = None
+        vis_out = None
+
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
 
@@ -154,6 +168,11 @@ class Trainer(object):
 
             with torch.no_grad():
                 output = self.model(image)
+
+            if i == visualization_index:
+                vis_img = image
+                vis_tgt = target
+                vis_out = output
 
             loss = self.criterion(output, target)
             test_loss += loss.item()
@@ -173,6 +192,8 @@ class Trainer(object):
         self.writer.add_scalar('val/Acc', Acc, epoch)
         self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
         self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
+        self.summary.visualize_image(self.writer, self.args.dataset, vis_img, vis_tgt, vis_out, epoch)
+
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))

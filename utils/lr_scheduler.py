@@ -37,7 +37,7 @@ class LR_Scheduler(object):
         self.current_lr = base_lr
         self.lr_step = lr_step
         if lr_step == 0:
-            self.lr_step = num_epochs // 3
+            self.lr_step = num_epochs * 2 // 3
         self.iters_per_epoch = iters_per_epoch
         self.N = num_epochs * iters_per_epoch
         self.epoch = -1
@@ -50,7 +50,7 @@ class LR_Scheduler(object):
         elif self.mode == 'poly':
             lr = self.lr * pow((1 - 1.0 * T / self.N), 0.9)
         elif self.mode == 'step':
-            lr = self.lr * (0.1 ** (epoch // self.lr_step))
+            lr = self.lr * (0.2 ** (epoch // self.lr_step))
         else:
             raise NotImplemented
         # warm up lr schedule

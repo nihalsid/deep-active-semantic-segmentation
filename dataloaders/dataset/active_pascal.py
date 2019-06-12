@@ -11,11 +11,12 @@ from active_selection.mc_dropout import ActiveSelectionMCDropout
 from dataloaders.dataset import pascal_base
 from torch.utils import data
 import constants
+from tqdm import tqdm
 
 
 class ActivePascalImage(pascal_base.ActivePascalBase):
 
-    def __init__(self, path, base_size, crop_size, split, init_set, overfit=False):
+    def __init__(self, path, base_size, crop_size, split, init_set, overfit=False, memory_hog_mode=True):
 
         super(ActivePascalImage, self).__init__(path, base_size, crop_size, split, overfit)
         self.current_image_paths = self.image_paths
@@ -27,6 +28,18 @@ class ActivePascalImage(pascal_base.ActivePascalBase):
                 print(f'# of current_image_paths = {len(self.current_image_paths)}, # of remaining_image_paths = {len(self.remaining_image_paths)}')
 
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
+        self.memory_hog_mode = memory_hog_mode
+        if self.memory_hog_mode:
+            self.path_to_npy = {}
+            self.load_files_into_memory()
+
+    def load_files_into_memory(self):
+        print('Acquiring dataset in memory')
+        for n in tqdm(self.current_image_paths):
+            if n not in self.path_to_npy:
+                with self.env.begin(write=False) as txn:
+                    loaded_npy = pickle.loads(txn.get(n))
+                    self.path_to_npy[n] = loaded_npy
 
     def __getitem__(self, index):
 
@@ -43,19 +56,22 @@ class ActivePascalImage(pascal_base.ActivePascalBase):
 
         loaded_npy = None
 
-        with self.env.begin(write=False) as txn:
-            loaded_npy = pickle.loads(txn.get(img_path))
+        if self.memory_hog_mode and img_path in self.path_to_npy:
+            loaded_npy = self.path_to_npy[img_path]
+        else:
+            with self.env.begin(write=False) as txn:
+                loaded_npy = pickle.loads(txn.get(img_path))
 
         image = loaded_npy[:, :, 0:3]
         retval = None
 
         if is_weakly_labeled:
             target = self.weakly_labeled_targets[img_path]
-            retval = self.transform_val({'image': Image.fromarray(image), 'label': Image.fromarray(loaded_npy[:, :, 3])})
+            retval = self.transform_val({'image': image, 'label': loaded_npy[:, :, 3]})
             retval['label'] = torch.from_numpy(target.astype(np.float32)).float()
         else:
             target = loaded_npy[:, :, 3]
-            sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
+            sample = {'image': image, 'label': target}
             retval = self.get_transformed_sample(sample)
 
         return retval
@@ -81,8 +97,8 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from dataloaders.utils import map_segmentation_to_colors
     path = os.path.join(constants.DATASET_ROOT, 'pascal')
-    crop_size = 513
-    base_size = 513
+    crop_size = -1
+    base_size = 512
     split = 'train'
 
     pascal_train = ActivePascalImage(path, base_size, crop_size, split, 'set_0.txt')

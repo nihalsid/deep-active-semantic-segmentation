@@ -190,6 +190,40 @@ class Scale(object):
                 'label': mask}
 
 
+class ScaleWithPadding(object):
+
+    def __init__(self, base_size):
+        self.base_size = base_size
+
+    def __call__(self, sample):
+        img = sample['image']
+        mask = sample['label']
+
+        w, h = img.shape[1], img.shape[0]
+        out_image = np.zeros((self.base_size, self.base_size, 3), dtype=np.float32)
+        out_mask = np.ones((self.base_size, self.base_size), dtype=np.uint8) * 255
+
+        if w < h:  # h = 1024, w = 2048, oh = 512, ow = 1024
+            oh = self.base_size
+            ow = int(1.0 * w * oh / h)
+            if ow % 2 != 0:
+                ow += 1
+        else:
+            ow = self.base_size
+            oh = int(1.0 * h * ow / w)
+            if oh % 2 != 0:
+                oh += 1
+
+        img = imresize(img, (oh, ow))
+        mask = imresize(mask, (oh, ow), 'nearest')
+
+        out_image[self.base_size // 2 - oh // 2: self.base_size // 2 + oh // 2, self.base_size // 2 - ow // 2: self.base_size // 2 + ow // 2, :] = img
+        out_mask[self.base_size // 2 - oh // 2: self.base_size // 2 + oh // 2, self.base_size // 2 - ow // 2: self.base_size // 2 + ow // 2] = mask
+
+        return {'image': out_image,
+                'label': out_mask}
+
+
 class FixScaleCropImageOnly(object):
 
     def __init__(self, crop_size):

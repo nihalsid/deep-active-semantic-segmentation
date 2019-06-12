@@ -23,6 +23,11 @@ class PascalBase(data.Dataset):
         self.base_size = base_size
         self.overfit = overfit
 
+        if crop_size == -1:
+            self.scalecrop = tr.ScaleWithPadding(base_size=self.base_size)
+        else:
+            self.scalecrop = tr.FixScaleCrop(crop_size=self.crop_size)
+
         if overfit:
             self.image_paths = self.image_paths[:1]
 
@@ -31,7 +36,7 @@ class PascalBase(data.Dataset):
 
     def transform_train(self, sample):
         composed_transforms = transforms.Compose([
-            tr.FixScaleCrop(crop_size=self.crop_size),
+            self.scalecrop,
             tr.RandomHorizontalFlip(),
             #tr.RandomScaleCrop(base_size=self.base_size, crop_size=self.crop_size, fill=255),
             tr.RandomGaussianBlur(),
@@ -44,7 +49,7 @@ class PascalBase(data.Dataset):
     def transform_val(self, sample):
 
         composed_transforms = transforms.Compose([
-            tr.FixScaleCrop(crop_size=self.crop_size),
+            self.scalecrop,
             tr.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             tr.ToTensor()])
 

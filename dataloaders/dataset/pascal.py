@@ -5,13 +5,22 @@ import pickle
 import os
 import constants
 from dataloaders.dataset import pascal_base
+from tqdm import tqdm
 
 
 class Pascal(pascal_base.PascalBase):
 
-    def __init__(self, path, base_size, crop_size, split, overfit=False):
+    def __init__(self, path, base_size, crop_size, split, overfit=False, memory_hog_mode=True):
 
         super(Pascal, self).__init__(path, base_size, crop_size, split, overfit)
+        self.memory_hog_mode = memory_hog_mode
+        if self.memory_hog_mode:
+            self.path_to_npy = {}
+            print('Acquiring dataset in memory')
+            for n in tqdm(self.image_paths):
+                with self.env.begin(write=False) as txn:
+                    loaded_npy = pickle.loads(txn.get(n))
+                    self.path_to_npy[n] = loaded_npy
 
     def __len__(self):
         return len(self.image_paths)
@@ -21,13 +30,16 @@ class Pascal(pascal_base.PascalBase):
         img_path = self.image_paths[index]
 
         loaded_npy = None
-        with self.env.begin(write=False) as txn:
-            loaded_npy = pickle.loads(txn.get(img_path))
+        if self.memory_hog_mode and img_path in self.path_to_npy:
+            loaded_npy = self.path_to_npy[img_path]
+        else:
+            with self.env.begin(write=False) as txn:
+                loaded_npy = pickle.loads(txn.get(img_path))
 
         image = loaded_npy[:, :, 0:3]
         target = loaded_npy[:, :, 3]
 
-        sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target)}
+        sample = {'image': image, 'label': target}
         return self.get_transformed_sample(sample)
 
     def set_paths(self, pathlist):

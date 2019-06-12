@@ -23,7 +23,8 @@ def calculate_weights_labels(dataset, dataloader, num_classes):
     for frequency in z:
         class_weight = 1 / (np.log(1.02 + (frequency / total_frequency)))
         class_weights.append(class_weight)
+
+    ret = np.nan_to_num(np.array(class_weights))
     print('Class weights: ')
-    print(class_weights)
-    ret = np.array(class_weights)
+    print(ret)
     return ret
