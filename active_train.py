@@ -421,10 +421,14 @@ def main():
         summary.visualize_image(writer, args.dataset, visualizations[0], visualizations[1], visualizations[2], len(training_set.current_image_paths))
 
         trainer.writer.close()
-        trainer.model.eval()
 
         if selection_iter == (total_active_selection_iterations - 1):
             break
+
+        checkpoint = torch.load(trainer.saver.experiment_dir, 'best.pth.tar')
+        trainer.model.module.load_state_dict(checkpoint['state_dict'])
+
+        trainer.model.eval()
 
         if args.active_selection_mode == 'random':
             training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths, args.active_batch_size))

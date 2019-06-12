@@ -70,7 +70,6 @@ class ActiveSaver(Saver):
         filename = os.path.join(self.experiment_dir, 'selections.txt')
         with open(filename, 'w') as fptr:
             if regions:
-
                 for p, region in zip(paths, regions):
                     region_line = ",".join([",".join([str(i) for i in r]) for r in region])
                     fptr.write(p.decode('utf-8') + ',' + region_line + '\n')
