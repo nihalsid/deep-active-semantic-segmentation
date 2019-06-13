@@ -425,7 +425,7 @@ def main():
         if selection_iter == (total_active_selection_iterations - 1):
             break
 
-        checkpoint = torch.load(trainer.saver.experiment_dir, 'best.pth.tar')
+        checkpoint = torch.load(os.path.join(trainer.saver.experiment_dir, 'best.pth.tar'))
         trainer.model.module.load_state_dict(checkpoint['state_dict'])
 
         trainer.model.eval()
