@@ -8,6 +8,7 @@ from utils.cityscapes_to_lmdb import CITYSCAPES_IGNORE_INDEX
 import constants
 import os
 from dataloaders import custom_transforms as tr
+from tqdm import tqdm
 
 
 class ActivePascalRegion(pascal_base.ActivePascalBase):
@@ -89,7 +90,7 @@ class ActivePascalRegion(pascal_base.ActivePascalBase):
         for r in regions:
             tr.invert_fix_scale_crop(target_full, target_masked, r, self.crop_size)
 
-        sample = {'image': Image.fromarray(image), 'label': Image.fromarray(target_masked)}
+        sample = {'image': image, 'label': target_masked}
         return self.get_transformed_sample(sample)
 
 if __name__ == "__main__":
