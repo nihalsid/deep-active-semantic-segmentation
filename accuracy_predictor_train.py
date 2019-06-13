@@ -334,6 +334,7 @@ def main():
     parser.add_argument('--memory-hog', action='store_true', default=False, help='memory_hog mode')
     parser.add_argument('--active-selection-mode', type=str, default='accuracy',
                         choices=['accuracy', 'gradient', 'uncertain', 'uncertain_gradient'], help='method to select new samples')
+    parser.add_argument('--no-early-stop', action='store_true', default=False, help='no early stopping')
 
     args = parser.parse_args()
 
@@ -437,7 +438,8 @@ def main():
 
         trainer.initialize()
 
-        early_stop = EarlyStopChecker(patience=5, min_improvement=args.min_improvement)
+        if not args.no_early_stop:
+            early_stop = EarlyStopChecker(patience=5, min_improvement=args.min_improvement)
 
         best_mIoU = 0
         best_Acc = 0
@@ -459,9 +461,10 @@ def main():
             if FWIoU > best_FWIoU:
                 best_FWIoU = FWIoU
             # check for early stopping
-            if early_stop(mIoU):
-                print(f'Early stopping triggered after {epoch} epochs')
-                break
+            if not args.no_early_stop:
+                if early_stop(mIoU):
+                    print(f'Early stopping triggered after {epoch} epochs')
+                    break
 
         training_set.reset_dataset()
 
