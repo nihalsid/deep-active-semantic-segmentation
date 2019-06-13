@@ -479,10 +479,17 @@ def main():
         trainer.model.eval()
 
         if args.active_selection_mode == 'accuracy':
-            print('Estimating accuracies..')
-            selected_images = active_selector.get_least_accurate_samples(
-                trainer.model, training_set.remaining_image_paths, args.active_batch_size, args.accuracy_selection)
-            training_set.expand_training_set(selected_images)
+            if args.dataset == 'active_cityscapes_image':
+                print('Estimating accuracies..')
+                selected_images = active_selector.get_least_accurate_samples(
+                    trainer.model, training_set.remaining_image_paths, args.active_batch_size, args.accuracy_selection)
+                training_set.expand_training_set(selected_images)
+            elif args.dataset == 'active_cityscapes_region':
+                print('Estimating accuracy regions..')
+                regions, counts = active_selector.get_least_accurate_region_maps(
+                    trainer.model, training_set.image_paths, training_set.get_existing_region_maps(), args.active_region_size, args.active_batch_size)
+                print(f'Got {counts}/{math.ceil((args.active_batch_size) * args.crop_size * args.crop_size / (args.active_region_size * args.active_region_size))} regions')
+                training_set.expand_training_set(regions, counts * args.active_region_size * args.active_region_size)
         elif args.active_selection_mode == 'gradient':
             print('Estimating gradients..')
             selected_images = active_selector.get_adversarially_vulnarable_samples(

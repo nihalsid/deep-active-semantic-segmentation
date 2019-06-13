@@ -6,6 +6,7 @@ from active_selection.base import ActiveSelectionBase
 from tqdm import tqdm
 import os
 import time
+from active_selection.mc_dropout import ActiveSelectionMCDropout
 
 
 class ActiveSelectionAccuracy(ActiveSelectionBase):
@@ -109,6 +110,67 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
         selected_samples = list(zip(*sorted(zip(scores, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
         print(scores)
         return selected_samples
+
+    def suppress_labeled_areas(self, score_map, labeled_region):
+        ones_tensor = torch.cuda.FloatTensor(score_map.shape[0], score_map.shape[1]).fill_(0)
+        if labeled_region:
+            for lr in labeled_region:
+                zero_out_mask = ones_tensor != 0
+                r0 = lr[0]
+                c0 = lr[1]
+                r1 = lr[0] + lr[2]
+                c1 = lr[1] + lr[3]
+                zero_out_mask[r0:r1, c0:c1] = 1
+                score_map[zero_out_mask] = 0
+
+    def get_least_accurate_region_maps(self, model, images, existing_regions, region_size, selection_size):
+
+        score_maps = torch.cuda.FloatTensor(len(images), self.crop_size - region_size + 1, self.crop_size - region_size + 1)
+        loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
+                            batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
+        weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
+
+        map_ctr = 0
+        # commented lines are for visualization and verification
+        error_maps = []
+        base_images = []
+        softmax = torch.nn.Softmax2d()
+        with torch.no_grad():
+            for sample in tqdm(loader):
+                image_batch = sample['image'].cuda()
+                label_batch = sample['label'].cuda()
+                deeplab_output, unet_output = model(image_batch)
+                prediction = softmax(unet_output)
+                for idx in range(prediction.shape[0]):
+                    mask = (label_batch[idx, :, :] < 0) | (label_batch[idx, :, :] >= self.num_classes)
+                    incorrect = prediction[idx, 0, :, :]
+                    incorrect[mask] = 0
+                    self.suppress_labeled_areas(incorrect, existing_regions[map_ctr])
+                    base_images.append(image_batch[idx, :, :, :].cpu().numpy())
+                    error_maps.append(incorrect.cpu().numpy())
+                    score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(incorrect.unsqueeze(
+                        0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
+                    map_ctr += 1
+        min_val = score_maps.min()
+        max_val = score_maps.max()
+        minmax_norm = lambda x: x.add_(-min_val).mul_(1.0 / (max_val - min_val))
+        minmax_norm(score_maps)
+
+        num_requested_indices = (selection_size * self.crop_size * self.crop_size) / (region_size * region_size)
+        regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps.cpu(), region_size, num_requested_indices)
+        # print(f'Requested/Selected indices {num_requested_indices}/{num_selected_indices}')
+
+        for i in range(len(regions)):
+            ActiveSelectionMCDropout._visualize_regions(base_images[i], error_maps[i], regions[i], region_size)
+
+        new_regions = {}
+        for i in range(len(regions)):
+            if regions[i] != []:
+                new_regions[images[i]] = regions[i]
+
+        model.eval()
+
+        return new_regions, num_selected_indices
 
     def wait_for_selected_samples(self, location_to_monitor, images):
 
