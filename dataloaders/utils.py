@@ -63,7 +63,7 @@ def get_colormap(dataset):
         return create_cityscapes_label_colormap()
     elif dataset == 'binary':
         return create_binary_colormap()
-    elif dataset == 'pascal':
+    elif dataset == 'pascal' or dataset == 'active_pascal_image' or dataset == 'active_pascal_region':
         return create_pascal_label_colormap()
 
     raise Exception('No colormap for dataset found')
