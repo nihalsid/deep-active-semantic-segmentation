@@ -54,14 +54,7 @@ class Trainer(object):
             raise NotImplementedError
 
         if args.use_balanced_weights:
-            dataset_folder = args.dataset
-            if args.dataset == 'active_cityscapes':
-                dataset_folder = 'cityscapes'
-            classes_weights_path = os.path.join(constants.DATASET_ROOT, dataset_folder, 'class_weights.npy')
-            if os.path.isfile(classes_weights_path):
-                weight = np.load(classes_weights_path)
-            else:
-                weight = calculate_weights_labels(args.dataset, self.train_loader, self.nclass)
+            weight = calculate_weights_labels(args.dataset, self.train_loader, self.nclass)
             weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
@@ -258,7 +251,7 @@ def main():
     parser.add_argument('--out-stride', type=int, default=16,
                         help='network output stride (default: 16)')
     parser.add_argument('--dataset', type=str, default='active_cityscapes_image',
-                        choices=['active_cityscapes_image', 'active_cityscapes_region'],
+                        choices=['active_cityscapes_image', 'active_cityscapes_region', 'active_pascal_image', 'active_pascal_region'],
                         help='dataset name (default: active_cityscapes)')
     parser.add_argument('--base-size', type=int, default=513,
                         help='base image size')
@@ -424,9 +417,9 @@ def main():
 
         fraction_of_data_labeled = round(training_set.get_fraction_of_labeled_data() * 100)
 
-        if args.dataset == 'active_cityscapes_image':
+        if args.dataset.endswith('_image'):
             trainer.setup_saver_and_summary(fraction_of_data_labeled, training_set.current_image_paths)
-        elif args.dataset == 'active_cityscapes_region':
+        elif args.dataset.endswith('_region'):
             trainer.setup_saver_and_summary(fraction_of_data_labeled, training_set.current_image_paths, regions=[
                                             training_set.current_paths_to_regions_map[x] for x in training_set.current_image_paths])
         else:
@@ -482,12 +475,12 @@ def main():
         trainer.model.eval()
 
         if args.active_selection_mode == 'accuracy':
-            if args.dataset == 'active_cityscapes_image':
+            if args.dataset.endswith('_image'):
                 print('Estimating accuracies..')
                 selected_images = active_selector.get_least_accurate_samples(
                     trainer.model, training_set.remaining_image_paths, args.active_batch_size, args.accuracy_selection)
                 training_set.expand_training_set(selected_images)
-            elif args.dataset == 'active_cityscapes_region':
+            elif args.dataset.endswith('_region'):
                 print('Estimating accuracy regions..')
                 regions, counts = active_selector.get_least_accurate_region_maps(
                     trainer.model, training_set.image_paths, training_set.get_existing_region_maps(), args.active_region_size, args.active_batch_size)
