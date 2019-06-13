@@ -192,7 +192,7 @@ def main():
     parser.add_argument('--out-stride', type=int, default=16,
                         help='network output stride (default: 16)')
     parser.add_argument('--dataset', type=str, default='active_cityscapes_image',
-                        choices=['active_cityscapes_image', 'active_cityscapes_region'],
+                        choices=['active_cityscapes_image', 'active_cityscapes_region', 'active_pascal_image', 'active_pascal_region'],
                         help='dataset name (default: active_cityscapes)')
     parser.add_argument('--use-sbd', action='store_true', default=False,
                                             help='whether to use SBD dataset (default: False)')
@@ -276,9 +276,6 @@ def main():
     parser.add_argument('--no-early-stop', action='store_true', default=False, help='no early stopping')
 
     args = parser.parse_args()
-
-    if args.active_selection_mode == "random":
-        assert args.dataset == 'active_cityscapes_image', "For random mode only images supported, not regions"
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     if args.cuda:
@@ -367,9 +364,9 @@ def main():
 
         fraction_of_data_labeled = round(training_set.get_fraction_of_labeled_data() * 100)
 
-        if args.dataset == 'active_cityscapes_image':
+        if args.dataset.endswith('_image'):
             trainer.setup_saver_and_summary(fraction_of_data_labeled, training_set.current_image_paths)
-        elif args.dataset == 'active_cityscapes_region':
+        elif args.dataset.endswith('_region'):
             trainer.setup_saver_and_summary(fraction_of_data_labeled, training_set.current_image_paths, regions=[
                                             training_set.current_paths_to_regions_map[x] for x in training_set.current_image_paths])
         else:
@@ -433,13 +430,13 @@ def main():
         if args.active_selection_mode == 'random':
             training_set.expand_training_set(active_selector.get_random_uncertainity(training_set.remaining_image_paths, args.active_batch_size))
         elif args.active_selection_mode == 'variance' or args.active_selection_mode == 'variance_representative':
-            if args.dataset == 'active_cityscapes_image':
+            if args.dataset.endswith('_image'):
                 print('Calculating entropies..')
                 selected_images = active_selector.get_vote_entropy_for_images(trainer.model, training_set.remaining_image_paths, args.active_batch_size)
                 if args.active_selection_mode == 'variance_representative':
                     selected_images = max_subset_selector.get_representative_images(trainer.model, training_set.image_paths, selected_images)
                 training_set.expand_training_set(selected_images)
-            elif args.dataset == 'active_cityscapes_region':
+            elif args.dataset.endswith('_region'):
                 print('Creating region maps..')
                 regions, counts = active_selector.create_region_maps(
                     trainer.model, training_set.image_paths, training_set.get_existing_region_maps(), args.active_region_size, args.active_batch_size)
@@ -451,7 +448,7 @@ def main():
             else:
                 raise NotImplementedError
         elif args.active_selection_mode == 'coreset':
-            assert args.dataset == 'active_cityscapes_image', 'only images supported for coreset approach'
+            assert args.dataset.endswith('_image'), 'only images supported for coreset approach'
             training_set.expand_training_set(active_selector.get_k_center_greedy_selections(
                 args.active_batch_size, trainer.model, training_set.remaining_image_paths, training_set.current_image_paths))
         elif args.active_selection_mode == 'ceal_confidence':
@@ -489,12 +486,12 @@ def main():
                 trainer.model, training_set.remaining_image_paths, args.active_batch_size)
             training_set.expand_training_set(selected_images)
         elif args.active_selection_mode == 'noise_variance':
-            if args.dataset == 'active_cityscapes_image':
+            if args.dataset.endswith('_image'):
                 print('Calculating entropies..')
                 selected_images = active_selector.get_vote_entropy_for_batch_with_noise_and_vote_entropy(
                     trainer.model, training_set.remaining_image_paths, args.active_batch_size)
                 training_set.expand_training_set(selected_images)
-            elif args.dataset == 'active_cityscapes_region':
+            elif args.dataset.endswith('_region'):
                 print('Creating region maps..')
                 regions, counts = active_selector.create_region_maps(
                     trainer.model, training_set.image_paths, training_set.get_existing_region_maps(), args.active_region_size, args.active_batch_size)
