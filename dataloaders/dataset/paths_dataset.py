@@ -13,6 +13,13 @@ class PathsDataset(data.Dataset):
         self.paths = paths
         self.crop_size = crop_size
         self.include_labels = include_labels
+        self.base_size = 512
+        if crop_size == -1:
+            self.scalecrop = tr.ScaleWithPadding(base_size=self.base_size)
+            self.scalecrop_image_only = tr.ScaleWithPaddingImageOnly(base_size=self.crop_size)
+        else:
+            self.scalecrop = tr.FixScaleCrop(crop_size=self.crop_size)
+            self.scalecrop_image_only = tr.FixScaleCropImageOnly(crop_size=self.crop_size)
 
     def __len__(self):
         return len(self.paths)
@@ -30,14 +37,14 @@ class PathsDataset(data.Dataset):
 
         if self.include_labels:
             composed_tr = transforms.Compose([
-                tr.FixScaleCrop(crop_size=self.crop_size),
+                self.scalecrop,
                 tr.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 tr.ToTensor()
             ])
             return composed_tr({'image': image, 'label': target})
         else:
             composed_tr = transforms.Compose([
-                tr.FixScaleCropImageOnly(crop_size=self.crop_size),
+                self.scalecrop_image_only,
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])

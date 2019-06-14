@@ -190,6 +190,27 @@ class Scale(object):
                 'label': mask}
 
 
+class ScaleImageOnly(object):
+
+    def __init__(self, base_size):
+        self.base_size = base_size
+
+    def __call__(self, sample):
+        img = sample
+        w, h = img.shape[1], img.shape[0]
+
+        if w > h:  # h = 1024, w = 2048, oh = 512, ow = 1024
+            oh = self.base_size
+            ow = int(1.0 * w * oh / h)
+        else:
+            ow = self.base_size
+            oh = int(1.0 * h * ow / w)
+
+        img = imresize(img, (oh, ow))
+
+        return img
+
+
 class ScaleWithPadding(object):
 
     def __init__(self, base_size):
@@ -222,6 +243,35 @@ class ScaleWithPadding(object):
 
         return {'image': out_image,
                 'label': out_mask}
+
+
+class ScaleWithPaddingImageOnly(object):
+
+    def __init__(self, base_size):
+        self.base_size = base_size
+
+    def __call__(self, sample):
+        img = sample
+
+        w, h = img.shape[1], img.shape[0]
+        out_image = np.zeros((self.base_size, self.base_size, 3), dtype=np.float32)
+
+        if w < h:  # h = 1024, w = 2048, oh = 512, ow = 1024
+            oh = self.base_size
+            ow = int(1.0 * w * oh / h)
+            if ow % 2 != 0:
+                ow += 1
+        else:
+            ow = self.base_size
+            oh = int(1.0 * h * ow / w)
+            if oh % 2 != 0:
+                oh += 1
+
+        img = imresize(img, (oh, ow))
+
+        out_image[self.base_size // 2 - oh // 2: self.base_size // 2 + oh // 2, self.base_size // 2 - ow // 2: self.base_size // 2 + ow // 2, :] = img
+
+        return out_image
 
 
 class FixScaleCropImageOnly(object):
