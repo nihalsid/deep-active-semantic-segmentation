@@ -44,7 +44,7 @@ class ActiveSelectionCoreSet(ActiveSelectionBase):
         features = np.zeros((len(combined_paths), FEATURE_DIM))
         model.eval()
         model.module.set_return_features(True)
-        average_pool_kernel_size = (65, 65)
+        average_pool_kernel_size = (64, 64)
         average_pool_stride = average_pool_kernel_size[0] // 2
         with torch.no_grad():
             for batch_idx, sample in enumerate(tqdm(loader)):

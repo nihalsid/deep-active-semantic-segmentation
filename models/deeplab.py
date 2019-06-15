@@ -168,4 +168,4 @@ if __name__ == "__main__":
     input = torch.rand(1, 3, 513, 513)
     model.set_return_features(True)
     output, features = model(input)
-    print(features.size())
+    print(output.size(), F.avg_pool2d(features, (64, 64), 64 // 2).size())

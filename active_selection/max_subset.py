@@ -76,7 +76,7 @@ class ActiveSelectionMaxSubset(ActiveSelectionBase):
                             batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         model.eval()
         model.module.set_return_features(True)
-        average_pool_kernel_size = (65, 65)
+        average_pool_kernel_size = (64, 64)
         average_pool_stride = average_pool_kernel_size[0] // 2
         with torch.no_grad():
             for batch_idx, image_batch in enumerate(tqdm(loader)):
