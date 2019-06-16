@@ -94,8 +94,8 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
             if type(m) == torch.nn.Dropout2d:
                 m.train()
         model.apply(turn_on_dropout)
-
-        score_maps = torch.cuda.FloatTensor(len(images), self.crop_size - region_size + 1, self.crop_size - region_size + 1)
+        base_size = 512 if self.crop_size == -1 else self.crop_size
+        score_maps = torch.cuda.FloatTensor(len(images), base_size - region_size + 1, base_size - region_size + 1)
         loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
                             batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
@@ -120,7 +120,7 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         minmax_norm = lambda x: x.add_(-min_val).mul_(1.0 / (max_val - min_val))
         minmax_norm(score_maps)
 
-        num_requested_indices = (selection_size * self.crop_size * self.crop_size) / (region_size * region_size)
+        num_requested_indices = (selection_size * base_size * base_size) / (region_size * region_size)
         regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps.cpu(), region_size, num_requested_indices)
         # print(f'Requested/Selected indices {num_requested_indices}/{num_selected_indices}')
 
