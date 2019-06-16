@@ -40,8 +40,19 @@ class Trainer(object):
 
         args = self.args
 
-        model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride,
-                        sync_bn=args.sync_bn, freeze_bn=args.freeze_bn, mc_dropout=self.mc_dropout)
+        if args.architecture == 'deeplab':
+            print('Using Deeplab')
+            model = DeepLab(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride, sync_bn=args.sync_bn, freeze_bn=args.freeze_bn)
+            train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
+                            {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
+        elif args.architecture == 'enet':
+            print('Using ENet')
+            model = ENet(num_classes=self.nclass, encoder_relu=True, decoder_relu=True)
+            train_params = [{'params': model.parameters(), 'lr': args.lr}]
+        elif args.architecture == 'fastscnn':
+            print('Using FastSCNN')
+            model = FastSCNN(3, self.nclass)
+            train_params = [{'params': model.parameters(), 'lr': args.lr}]
         train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
                         {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
 
@@ -274,6 +285,7 @@ def main():
     parser.add_argument('--monitor-directory', type=str, default=None)
     parser.add_argument('--memory-hog', action='store_true', default=False, help='memory_hog mode')
     parser.add_argument('--no-early-stop', action='store_true', default=False, help='no early stopping')
+    parser.add_argument('--architecture', type=str, default='deeplab', choices=['deeplab', 'enet', 'fastscnn'])
 
     args = parser.parse_args()
 
