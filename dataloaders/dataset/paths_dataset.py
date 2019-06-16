@@ -16,7 +16,7 @@ class PathsDataset(data.Dataset):
         self.base_size = 512
         if crop_size == -1:
             self.scalecrop = tr.ScaleWithPadding(base_size=self.base_size)
-            self.scalecrop_image_only = tr.ScaleWithPaddingImageOnly(base_size=self.crop_size)
+            self.scalecrop_image_only = tr.ScaleWithPaddingImageOnly(base_size=self.base_size)
         else:
             self.scalecrop = tr.FixScaleCrop(crop_size=self.crop_size)
             self.scalecrop_image_only = tr.FixScaleCropImageOnly(crop_size=self.crop_size)
