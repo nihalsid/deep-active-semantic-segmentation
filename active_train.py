@@ -20,6 +20,9 @@ import constants
 import sys
 from utils.early_stop import EarlyStopChecker
 
+from models.enet import ENet
+from models.fastscnn import FastSCNN
+
 
 class Trainer(object):
 
@@ -53,9 +56,6 @@ class Trainer(object):
             print('Using FastSCNN')
             model = FastSCNN(3, self.nclass)
             train_params = [{'params': model.parameters(), 'lr': args.lr}]
-        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
-                        {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
-
         if args.optimizer == 'SGD':
             optimizer = torch.optim.SGD(train_params, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
         elif args.optimizer == 'Adam':
