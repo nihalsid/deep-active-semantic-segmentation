@@ -27,7 +27,7 @@ class ActivePascalImage(pascal_base.ActivePascalBase):
                 self.remaining_image_paths = [x for x in self.image_paths if x not in self.current_image_paths]
                 print(f'# of current_image_paths = {len(self.current_image_paths)}, # of remaining_image_paths = {len(self.remaining_image_paths)}')
 
-        self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
+        self.labeled_pixel_count = len(self.current_image_paths) * self.base_size * self.base_size
         self.memory_hog_mode = memory_hog_mode
         if self.memory_hog_mode:
             self.path_to_npy = {}
@@ -80,7 +80,7 @@ class ActivePascalImage(pascal_base.ActivePascalBase):
         self.current_image_paths.extend(paths)
         for x in paths:
             self.remaining_image_paths.remove(x)
-        self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
+        self.labeled_pixel_count = len(self.current_image_paths) * self.base_size * self.base_size
 
     def add_weak_labels(self, predictions_dict):
         print(f'Adding {len(predictions_dict.keys())} weak labels')
