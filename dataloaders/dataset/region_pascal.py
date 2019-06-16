@@ -23,11 +23,11 @@ class ActivePascalRegion(pascal_base.ActivePascalBase):
                 for path in fptr.readlines():
                     if path is not '':
                         path = u'{}'.format(path.strip()).encode('ascii')
-                        self.current_paths_to_regions_map[path] = [(0, 0, crop_size, crop_size)]
+                        self.current_paths_to_regions_map[path] = [(0, 0, base_size, base_size)]
 
         else:
             for path in self.image_paths:
-                self.current_paths_to_regions_map[path] = [(0, 0, crop_size, crop_size)]
+                self.current_paths_to_regions_map[path] = [(0, 0, base_size, base_size)]
 
         self.memory_hog_mode = memory_hog_mode
         if self.memory_hog_mode:
@@ -35,7 +35,7 @@ class ActivePascalRegion(pascal_base.ActivePascalBase):
             self.load_files_into_memory()
 
         self._update_path_lists()
-        self.labeled_pixel_count = crop_size * crop_size * len(self.current_image_paths)
+        self.labeled_pixel_count = base_size * base_size * len(self.current_image_paths)
         print(f'# of current_image_paths = {len(self.current_image_paths)}')
 
     def expand_training_set(self, new_regions, labeled_pixels):
@@ -88,7 +88,7 @@ class ActivePascalRegion(pascal_base.ActivePascalBase):
         target_masked = np.ones(target_full.shape, dtype=target_full.dtype) * CITYSCAPES_IGNORE_INDEX
 
         for r in regions:
-            tr.invert_fix_scale_crop(target_full, target_masked, r, self.crop_size)
+            tr.invert_scale_crop(target_full, target_masked, r, self.base_size)
 
         sample = {'image': image, 'label': target_masked}
         return self.get_transformed_sample(sample)
@@ -100,12 +100,12 @@ if __name__ == "__main__":
     from dataloaders.utils import map_segmentation_to_colors
 
     path = os.path.join(constants.DATASET_ROOT, 'pascal')
-    crop_size = 513
-    base_size = 513
+    crop_size = -1
+    base_size = 512
     split = 'train'
 
     pascal_train = ActivePascalRegion(path, base_size, crop_size, split, 'set_dummy.txt')
-    pascal_train.expand_training_set({pascal_train.image_paths[51]: [(36, 100, 127, 127)]}, 0)
+    pascal_train.expand_training_set({pascal_train.image_paths[299]: [(36, 100, 127, 127)]}, 0)
     dataloader = DataLoader(pascal_train, batch_size=1, shuffle=False, num_workers=0)
 
     for i, sample in enumerate(dataloader):

@@ -315,6 +315,33 @@ def invert_fix_scale_crop(label, output, region, crop_size):
     output[b0: b0 + b2, b1: b1 + b3] = label[b0: b0 + b2, b1: b1 + b3]
 
 
+def invert_scale_crop(label, output, region, base_size):
+
+    h, w = label.shape
+
+    if w < h:  # h = 1024, w = 2048, oh = 512, ow = 1024
+        oh = base_size
+        ow = int(1.0 * w * oh / h)
+        if ow % 2 != 0:
+            ow += 1
+    else:
+        ow = base_size
+        oh = int(1.0 * h * ow / w)
+        if oh % 2 != 0:
+            oh += 1
+
+    #print('height/width', h, w)
+    #print('outH/outW', oh, ow)
+    padding_h = abs(base_size - oh) // 2
+    padding_w = abs(base_size - ow) // 2
+    #print('Padding h/w', padding_h, padding_w)
+
+    b0, b1, b2, b3 = round((max(region[0] - padding_h, 0)) * (h / oh)), round(max((region[1] - padding_w), 0)
+                                                                              * (w / ow)), round(region[2] * (h / oh)), round(region[3] * (w / ow))
+
+    output[b0: b0 + b2, b1: b1 + b3] = label[b0: b0 + b2, b1: b1 + b3]
+
+
 class FixedResize(object):
 
     def __init__(self, size):
