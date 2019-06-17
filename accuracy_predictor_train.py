@@ -41,10 +41,14 @@ class Trainer(object):
 
         args = self.args
         model = DeepLabAccuracyPredictor(num_classes=self.nclass, backbone=args.backbone, output_stride=args.out_stride,
-                                         sync_bn=args.sync_bn, freeze_bn=args.freeze_bn, mc_dropout=False)
-        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
-                        {'params': model.get_10x_lr_params(), 'lr': args.lr * 10},
-                        {'params': model.get_unet_params(), 'lr': args.lr}]
+                                         sync_bn=args.sync_bn, freeze_bn=args.freeze_bn, mc_dropout=False, enet=args.architecture == 'enet')
+        if args.architecture == 'enet':
+            train_params = [{'params': model.get_enet_params(), 'lr': args.lr},
+                            {'params': model.get_unet_params(), 'lr': args.lr}]
+        else:
+            train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
+                            {'params': model.get_10x_lr_params(), 'lr': args.lr * 10},
+                            {'params': model.get_unet_params(), 'lr': args.lr}]
 
         if args.optimizer == 'SGD':
             optimizer = torch.optim.SGD(train_params, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
@@ -328,6 +332,7 @@ def main():
     parser.add_argument('--active-selection-mode', type=str, default='accuracy',
                         choices=['accuracy', 'gradient', 'uncertain', 'uncertain_gradient'], help='method to select new samples')
     parser.add_argument('--no-early-stop', action='store_true', default=False, help='no early stopping')
+    parser.add_argument('--architecture', type=str, default='deeplab', choices=['deeplab', 'enet', 'fastscnn'])
 
     args = parser.parse_args()
 

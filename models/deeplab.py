@@ -10,7 +10,7 @@ import numpy as np
 
 class DeepLab(nn.Module):
 
-    def __init__(self, backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False, average_pool_kernel_size=(65, 65)):
+    def __init__(self, backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False):
 
         super(DeepLab, self).__init__()
 
@@ -19,14 +19,12 @@ class DeepLab(nn.Module):
         else:
             batchnorm = nn.BatchNorm2d
 
-        self.average_pool_kernel_size = average_pool_kernel_size
-        self.average_pool_stride = self.average_pool_kernel_size[0] // 2
         self.backbone = build_backbone(backbone, output_stride, batchnorm, mc_dropout)
         self.aspp = ASPP(backbone, output_stride, batchnorm)
         self.decoder = Decoder(num_classes, backbone, batchnorm, mc_dropout)
         self.return_features = False
         self.noisy_features = False
-
+        self.model_name = 'deeplab'
         if freeze_bn:
             self.freeze_bn()
 

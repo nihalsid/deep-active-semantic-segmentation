@@ -100,6 +100,42 @@ def test_entropy_map_for_images():
     print(active_selector.get_vote_entropy_for_images(model, train_set.current_image_paths[:10], 5))
 
 
+def test_entropy_map_for_images_enet():
+
+    args = {
+        'base_size': 512,
+        'crop_size': -1,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 1
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+    val_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                      crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+    from models.enet import ENet
+    model = ENet(num_classes=train_set.NUM_CLASSES, encoder_relu=True, decoder_relu=True)
+
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
+                                         'base_efw-enetf-bs_4-no_sched-1024x512-lr_0.01\\experiment_3', 'checkpoint.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+
+    model.eval()
+
+    # ensure that the loaded model is not crap
+    # validation(model, DataLoader(train_set, batch_size=2, shuffle=False), args)
+
+    active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    print(active_selector.get_vote_entropy_for_images(model, train_set.current_image_paths[:10], 5))
+
+
 def test_nms():
     from PIL import Image
     img_0 = np.asarray(Image.open("resources/images/nms_0.png"), dtype=np.float32) / 256
@@ -373,7 +409,56 @@ def test_core_set():
     model = model.cuda()
 
     checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
-                                         'base_0-deeplab-mobilenet-bs12-513x513', 'model_best.pth.tar'))
+                                         'base_efw-deeplab-mobilenet-bs_5-512x512-lr_0.01', 'model_best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+
+    with open("datasets/cityscapes/clusters/clusters_0.txt", "r") as fptr:
+        cluster_dict = json.loads(fptr.read())
+
+    all_paths = []
+    cluster_index_length = []
+    labels = []
+    current_idx = 0
+    for cluster in cluster_dict:
+        all_paths.extend([u'{}'.format(x.strip()).encode('ascii') for x in cluster_dict[cluster]])
+        cluster_index_length.append((current_idx, current_idx + len(cluster_dict[cluster])))
+        current_idx = current_idx + len(cluster_dict[cluster])
+        labels.append(cluster)
+
+    active_selection = ActiveSelectionCoreSet(train_set.env, args.crop_size, args.batch_size)
+    selected_clusters = active_selection.get_k_center_greedy_selections(10, model, all_paths[1:], [all_paths[0]])
+
+
+def test_core_set_enet():
+
+    from dataloaders.dataset import active_cityscapes
+    from sklearn.manifold import TSNE
+    import matplotlib.pyplot as plt
+    import json
+
+    args = {
+        'base_size': 512,
+        'crop_size': -1,
+        'seed_set': 'set_0.txt',
+        'batch_size': 5,
+        'cuda': True
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+
+    from models.enet import ENet
+    model = ENet(num_classes=train_set.NUM_CLASSES, encoder_relu=True, decoder_relu=True)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
+                                         'base_efw-enetf-bs_4-no_sched-1024x512-lr_0.01\\experiment_3', 'checkpoint.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     model.eval()
     dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
@@ -585,6 +670,40 @@ def test_image_features():
     max_subset_selector.get_representative_images(model, train_set.current_image_paths[:36], candidates)
 
 
+def test_image_features_enet():
+    args = {
+        'base_size': 512,
+        'crop_size': -1,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 5
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+    val_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                      crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+    from models.enet import ENet
+    model = ENet(num_classes=train_set.NUM_CLASSES, encoder_relu=True, decoder_relu=True)
+
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
+                                         'base_efw-enetf-bs_4-no_sched-1024x512-lr_0.01\\experiment_3', 'checkpoint.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+
+    model.eval()
+
+    active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    max_subset_selector = ActiveSelectionMaxSubset(train_set.env, args.crop_size, args.batch_size)
+    candidates = active_selector.get_vote_entropy_for_images(model, train_set.current_image_paths[:36], 8)
+    max_subset_selector.get_representative_images(model, train_set.current_image_paths[:36], candidates)
+
+
 def test_entropy_map_for_images_with_inoise():
 
     args = {
@@ -655,6 +774,40 @@ def test_entropy_map_for_images_with_fnoise():
     print(active_selector.get_vote_entropy_for_images_with_feature_noise(model, train_set.current_image_paths[:36], 10))
 
 
+def test_entropy_map_for_images_with_fnoise_enet():
+
+    args = {
+        'base_size': 512,
+        'crop_size': -1,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 12
+    }
+    from models.enet import ENet
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+    model = ENet(num_classes=train_set.NUM_CLASSES, encoder_relu=True, decoder_relu=True)
+
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
+                                         'base_efw-enetf-bs_4-no_sched-1024x512-lr_0.01\\experiment_3', 'checkpoint.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+
+    model.eval()
+
+    # ensure that the loaded model is not crap
+    # validation(model, DataLoader(train_set, batch_size=2, shuffle=False), args)
+
+    active_selector = ActiveSelectionMCNoise(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    print(active_selector.get_vote_entropy_for_images_with_feature_noise(model, train_set.current_image_paths[:36], 10))
+
+
 def test_entropy_map_for_images_with_noise_and_ve():
 
     args = {
@@ -679,6 +832,40 @@ def test_entropy_map_for_images_with_noise_and_ve():
 
     checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes',
                                          'al_4-variance-scratch_ep100-bs_125-deeplab-mobilenet-bs_12-513x513', 'run_0425', 'best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+
+    model.eval()
+
+    # ensure that the loaded model is not crap
+    # validation(model, DataLoader(train_set, batch_size=2, shuffle=False), args)
+
+    active_selector = ActiveSelectionMCNoise(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    print(active_selector.get_vote_entropy_for_batch_with_noise_and_vote_entropy(model, train_set.current_image_paths[:36], 10))
+
+
+def test_entropy_map_for_images_with_noise_and_ve_enet():
+
+    args = {
+        'base_size': 512,
+        'crop_size': -1,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 12
+    }
+    from models.enet import ENet
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+    model = ENet(num_classes=train_set.NUM_CLASSES, encoder_relu=True, decoder_relu=True)
+
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
+                                         'base_efw-enetf-bs_4-no_sched-1024x512-lr_0.01\\experiment_3', 'checkpoint.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
 
     model.eval()
@@ -1116,4 +1303,6 @@ if __name__ == '__main__':
     # test_gradient_visualization()
     # test_unsure_samples()
     # test_create_inaccuracy_maps_with_region_cityscapes()
-    test_create_region_maps_with_region_pascal()
+    # test_create_region_maps_with_region_pascal()
+    # test_image_features_enet()
+    test_entropy_map_for_images_enet()

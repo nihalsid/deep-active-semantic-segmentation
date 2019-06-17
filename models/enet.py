@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import numpy as np
 
 
 class InitialBlock(nn.Module):
@@ -36,7 +37,7 @@ class InitialBlock(nn.Module):
         super().__init__()
 
         if relu:
-            activation = nn.ReLU()
+            activation = nn.ReLU(inplace=True)
         else:
             activation = nn.PReLU()
 
@@ -133,7 +134,7 @@ class RegularBottleneck(nn.Module):
         internal_channels = channels // internal_ratio
 
         if relu:
-            activation = nn.ReLU()
+            activation = nn.ReLU(inplace=True)
         else:
             activation = nn.PReLU()
 
@@ -281,7 +282,7 @@ class DownsamplingBottleneck(nn.Module):
         internal_channels = in_channels // internal_ratio
 
         if relu:
-            activation = nn.ReLU()
+            activation = nn.ReLU(inplace=True)
         else:
             activation = nn.PReLU()
 
@@ -421,7 +422,7 @@ class UpsamplingBottleneck(nn.Module):
         internal_channels = in_channels // internal_ratio
 
         if relu:
-            activation = nn.ReLU()
+            activation = nn.ReLU(inplace=True)
         else:
             activation = nn.PReLU()
 
@@ -498,7 +499,9 @@ class ENet(nn.Module):
 
     def __init__(self, num_classes, encoder_relu=False, decoder_relu=True):
         super().__init__()
-
+        self.return_features = False
+        self.noisy_features = False
+        self.model_name = 'enet'
         self.initial_block = InitialBlock(3, 16, padding=1, relu=encoder_relu)
 
         # Stage 1 - Encoder
@@ -635,6 +638,11 @@ class ENet(nn.Module):
         x = self.asymmetric3_6(x)
         x = self.dilated3_7(x)
 
+        features = x
+        if self.noisy_features is True:
+            noise_x = np.random.normal(loc=0.0, scale=abs(x.mean().cpu().item() * 0.5), size=x.shape).astype(np.float32)
+            x += torch.from_numpy(noise_x).cuda()
+
         # Stage 4 - Decoder
         x = self.upsample4_0(x, max_indices2_0)
         x = self.regular4_1(x)
@@ -645,7 +653,16 @@ class ENet(nn.Module):
         x = self.regular5_1(x)
         x = self.transposed_conv(x)
 
+        if self.return_features:
+            return x, features
         return x
+
+    def set_return_features(self, return_features):
+        self.return_features = return_features
+
+    def set_noisy_features(self, noisy_features):
+        self.noisy_features = noisy_features
+
 
 if __name__ == '__main__':
 

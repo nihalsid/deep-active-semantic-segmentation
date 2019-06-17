@@ -40,11 +40,16 @@ class ActiveSelectionCoreSet(ActiveSelectionBase):
         combined_paths = already_selected_image_batch + candidate_image_batch
         loader = DataLoader(paths_dataset.PathsDataset(self.env, combined_paths, self.crop_size),
                             batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
-        FEATURE_DIM = 2736
+        if model.module.model_name == 'deeplab':
+            FEATURE_DIM = 2736
+            average_pool_kernel_size = (64, 64)
+        elif model.module.model_name == 'enet':
+            FEATURE_DIM = 1152
+            average_pool_kernel_size = (32, 32)
         features = np.zeros((len(combined_paths), FEATURE_DIM))
         model.eval()
         model.module.set_return_features(True)
-        average_pool_kernel_size = (64, 64)
+
         average_pool_stride = average_pool_kernel_size[0] // 2
         with torch.no_grad():
             for batch_idx, sample in enumerate(tqdm(loader)):
