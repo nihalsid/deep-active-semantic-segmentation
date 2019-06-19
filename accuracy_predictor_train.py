@@ -53,7 +53,7 @@ class Trainer(object):
         if args.optimizer == 'SGD':
             optimizer = torch.optim.SGD(train_params, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
         elif args.optimizer == 'Adam':
-            optimizer = torch.optim.Adam(train_params)
+            optimizer = torch.optim.Adam(train_params, weight_decay=args.weight_decay)
         else:
             raise NotImplementedError
 
@@ -377,14 +377,14 @@ def main():
     w_dl = [1 - args.weight_unet] * args.epochs
     w_un = [args.weight_unet] * args.epochs
 
-    if False:
-        for i in range(args.epochs // 3, args.epochs):
-            w_dl[i] = 0.75
-            w_un[i] = 0.25
+    if args.architecture == 'enet':
+        for i in range(args.epochs // 4, args.epochs):
+            w_dl[i] = 1.0
+            w_un[i] = 0.0
 
-        for i in range(2 * args.epochs // 3, args.epochs):
-            w_dl[i] = 0.5
-            w_un[i] = 0.5
+        for i in range(3 * args.epochs // 4, args.epochs):
+            w_dl[i] = 1 - args.weight_unet
+            w_un[i] = args.weight_unet
 
     kwargs = {'pin_memory': False, 'init_set': args.seed_set, 'memory_hog': args.memory_hog}
     dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.workers, args.overfit, **kwargs)
