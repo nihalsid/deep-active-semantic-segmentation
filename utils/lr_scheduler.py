@@ -37,7 +37,7 @@ class LR_Scheduler(object):
         self.current_lr = base_lr
         self.lr_step = lr_step
         if lr_step == 0:
-            self.lr_step = max(1, num_epochs * 2 // 3)
+            self.lr_step = 100
         self.iters_per_epoch = iters_per_epoch
         self.N = num_epochs * iters_per_epoch
         self.epoch = -1
