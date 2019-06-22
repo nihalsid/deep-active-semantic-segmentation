@@ -333,6 +333,7 @@ def main():
                         choices=['accuracy', 'gradient', 'uncertain', 'uncertain_gradient'], help='method to select new samples')
     parser.add_argument('--no-early-stop', action='store_true', default=False, help='no early stopping')
     parser.add_argument('--architecture', type=str, default='deeplab', choices=['deeplab', 'enet', 'fastscnn'])
+    parser.add_argument('--no-end-to-end', action='store_true', default=False, help='no end to end training')
 
     args = parser.parse_args()
 
@@ -377,14 +378,15 @@ def main():
     w_dl = [1 - args.weight_unet] * args.epochs
     w_un = [args.weight_unet] * args.epochs
 
-    if args.architecture == 'enet':
-        for i in range(args.epochs // 4, args.epochs):
+    if args.architecture == 'enet' or args.no_end_to_end:
+
+        for i in range(0, args.epochs * 2 // 3):
             w_dl[i] = 1.0
             w_un[i] = 0.0
 
-        for i in range(3 * args.epochs // 4, args.epochs):
-            w_dl[i] = 1 - args.weight_unet
-            w_un[i] = args.weight_unet
+        for i in range(2 * args.epochs // 3, args.epochs):
+            w_dl[i] = 0.0
+            w_un[i] = 1.0
 
     kwargs = {'pin_memory': False, 'init_set': args.seed_set, 'memory_hog': args.memory_hog}
     dataloaders = make_dataloader(args.dataset, args.base_size, args.crop_size, args.batch_size, args.workers, args.overfit, **kwargs)
