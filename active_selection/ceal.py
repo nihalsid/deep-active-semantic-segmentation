@@ -5,6 +5,8 @@ import numpy as np
 from sklearn.metrics import pairwise_distances
 from active_selection.base import ActiveSelectionBase
 from tqdm import tqdm
+import matplotlib
+from dataloaders.utils import map_segmentation_to_colors
 
 
 class ActiveSelectionCEAL(ActiveSelectionBase):
@@ -19,6 +21,11 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
                             batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         max_confidence = []
 
+        #rgb_images = []
+        #sem_gt_images = []
+        #sem_pred_images = []
+        #lc_images = []
+
         with torch.no_grad():
             for sample in tqdm(loader):
                 image_batch = sample['image'].cuda()
@@ -29,13 +36,35 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
                 for batch_idx in range(max_conf_batch.shape[0]):
                     mask = (label_batch[batch_idx, :, :] < 0) | (label_batch[batch_idx, :, :] >= self.dataset_num_classes)
                     max_conf_batch[batch_idx, mask] = 1
-                    # prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
+
                     # from active_selection import ActiveSelectionMCDropout
                     # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :, :].cpu().numpy(), max_conf_batch[
                     #                                            batch_idx, :, :].cpu().numpy(), prediction)
+                    '''
+                    image_unnormalized = ((np.transpose(image_batch[batch_idx].cpu().numpy(), axes=[1, 2, 0])
+                                           * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
 
+                    rgb_images.append(image_unnormalized)
+                    gt_colored = map_segmentation_to_colors(np.array(label_batch[batch_idx].cpu().numpy()).astype(np.uint8), 'cityscapes')
+                    sem_gt_images.append(gt_colored)
+                    prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
+                    sem_pred_images.append(map_segmentation_to_colors(np.array(prediction).astype(np.uint8), 'cityscapes'))
+                    masked_target_array = np.ma.array(max_conf_batch[batch_idx, :, :].cpu().numpy(), mask=label_batch[batch_idx].cpu().numpy() == 255)
+                    masked_target_array = 1 - masked_target_array
+                    cmap = matplotlib.cm.jet
+                    cmap.set_bad('white', 1.)
+                    lc_images.append(cmap(masked_target_array))
+                    '''
                     max_confidence.append(torch.mean(max_conf_batch[batch_idx, :, :]).cpu().item())
-
+        '''
+        import matplotlib.pyplot as plt
+        for prefix, arr in zip(['rgb', 'sem_gt', 'sem_pred', 'lc'], [rgb_images, sem_gt_images, sem_pred_images, lc_images]):
+            stacked_image = np.ones(((arr[0].shape[0] + 20) * len(arr), arr[0].shape[1], arr[0].shape[2]),
+                                    dtype=arr[0].dtype) * (255 if arr[0].dtype == np.uint8 else 1)
+            for i, im in enumerate(arr):
+                stacked_image[i * (arr[0].shape[0] + 20): i * (arr[0].shape[0] + 20) + arr[0].shape[0], :, :] = im
+            plt.imsave('%s.png' % (prefix), stacked_image)
+        '''
         selected_samples = list(zip(*sorted(zip(max_confidence, images), key=lambda x: x[0], reverse=False)))[1][:selection_count]
         return selected_samples
 

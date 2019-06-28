@@ -10,6 +10,7 @@ from tqdm import tqdm
 import constants
 import random
 from scipy import stats
+import matplotlib.cm
 
 
 class ActiveSelectionMCDropout(ActiveSelectionBase):
@@ -26,7 +27,12 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         return selected_samples
 
     def _get_vote_entropy_for_batch(self, model, image_batch, label_batch):
-
+        '''
+        rgb_images = []
+        sem_gt_images = []
+        sem_pred_images = []
+        ve_images = []
+        '''
         outputs = torch.cuda.FloatTensor(image_batch.shape[0], constants.MC_STEPS, image_batch.shape[2], image_batch.shape[3])
         with torch.no_grad():
             for step in range(constants.MC_STEPS):
@@ -43,8 +49,33 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
             # visualize for debugging
             # prediction = stats.mode(outputs[i, :, :, :].cpu().numpy(), axis=0)[0].squeeze()
             # self._visualize_entropy(image_batch[i, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
-            entropy_maps.append(entropy_map)
+            '''
+            image_unnormalized = ((np.transpose(image_batch[i].cpu().numpy(), axes=[1, 2, 0])
+                                   * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
 
+            rgb_images.append(image_unnormalized)
+            gt_colored = map_segmentation_to_colors(np.array(label_batch[i].cpu().numpy()).astype(np.uint8), 'cityscapes')
+            sem_gt_images.append(gt_colored)
+            prediction = stats.mode(outputs[i, :, :, :].cpu().numpy(), axis=0)[0].squeeze()
+            sem_pred_images.append(map_segmentation_to_colors(np.array(prediction).astype(np.uint8), 'cityscapes'))
+            e = entropy_map[:, :].cpu().numpy()
+            e = (e - e.min()) / (e.max() - e.min())
+            masked_target_array = np.ma.array(1 - e, mask=label_batch[i].cpu().numpy() == 255)
+            masked_target_array = 1 - masked_target_array
+            cmap = matplotlib.cm.jet
+            cmap.set_bad('white', 1.)
+            ve_images.append(cmap(masked_target_array))
+            '''
+            entropy_maps.append(entropy_map)
+        '''
+        import matplotlib.pyplot as plt
+        for prefix, arr in zip(['rgb', 'sem_gt', 'sem_pred', 've'], [rgb_images, sem_gt_images, sem_pred_images, ve_images]):
+            stacked_image = np.ones(((arr[0].shape[0] + 20) * len(arr), arr[0].shape[1], arr[0].shape[2]),
+                                    dtype=arr[0].dtype) * (255 if arr[0].dtype == np.uint8 else 1)
+            for i, im in enumerate(arr):
+                stacked_image[i * (arr[0].shape[0] + 20): i * (arr[0].shape[0] + 20) + arr[0].shape[0], :, :] = im
+            plt.imsave('%s.png' % (prefix), stacked_image)
+        '''
         return entropy_maps
 
     @staticmethod
@@ -175,15 +206,16 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         plt.show(block=True)
 
     @staticmethod
-    def _visualize_regions(base_image, image, regions, region_size):
+    def _visualize_regions(base_image, image, regions, score_map, region_size):
         import matplotlib.pyplot as plt
         import matplotlib.patches as patches
-        _, ax = plt.subplots(2)
+        _, ax = plt.subplots(1, 3)
         if len(base_image.shape) == 3:
             ax[0].imshow(((np.transpose(base_image, axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8))
         else:
             ax[0].imshow(base_image)
-        ax[1].imshow(image)
+        ax[1].imshow(image, cmap='jet')
         for r in regions:
             rect = patches.Rectangle((r[1], r[0]), region_size, region_size, linewidth=1, edgecolor='r', facecolor='none')
             ax[1].add_patch(rect)
+        ax[2].imshow(score_map, cmap='jet')

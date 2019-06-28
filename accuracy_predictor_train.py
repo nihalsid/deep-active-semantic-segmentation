@@ -382,10 +382,10 @@ def main():
 
         for i in range(0, args.epochs * 2 // 3):
             w_dl[i] = 1.0
-            w_un[i] = 0.0
+            w_un[i] = 1.0
 
         for i in range(2 * args.epochs // 3, args.epochs):
-            w_dl[i] = 0.0
+            w_dl[i] = 1.0
             w_un[i] = 1.0
 
     kwargs = {'pin_memory': False, 'init_set': args.seed_set, 'memory_hog': args.memory_hog}

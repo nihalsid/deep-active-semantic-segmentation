@@ -132,8 +132,8 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
 
         map_ctr = 0
         # commented lines are for visualization and verification
-        error_maps = []
-        base_images = []
+        #error_maps = []
+        #base_images = []
         softmax = torch.nn.Softmax2d()
         with torch.no_grad():
             for sample in tqdm(loader):
@@ -146,8 +146,8 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
                     incorrect = prediction[idx, 0, :, :]
                     incorrect[mask] = 0
                     self.suppress_labeled_areas(incorrect, existing_regions[map_ctr])
-                    base_images.append(image_batch[idx, :, :, :].cpu().numpy())
-                    error_maps.append(incorrect.cpu().numpy())
+                    #base_images.append(image_batch[idx, :, :, :].cpu().numpy())
+                    # error_maps.append(incorrect.cpu().numpy())
                     score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(incorrect.unsqueeze(
                         0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
                     map_ctr += 1
@@ -160,8 +160,8 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
         regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps.cpu(), region_size, num_requested_indices)
         # print(f'Requested/Selected indices {num_requested_indices}/{num_selected_indices}')
 
-        for i in range(len(regions)):
-            ActiveSelectionMCDropout._visualize_regions(base_images[i], error_maps[i], regions[i], region_size)
+        # for i in range(len(regions)):
+        #    ActiveSelectionMCDropout._visualize_regions(base_images[i], error_maps[i], regions[i], score_maps[i, :, :].cpu().numpy(), region_size)
 
         new_regions = {}
         for i in range(len(regions)):

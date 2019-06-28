@@ -10,27 +10,27 @@ class DeepLabAccuracyPredictor(nn.Module):
     def __init__(self, backbone, output_stride, num_classes, sync_bn, freeze_bn, mc_dropout, enet=False):
         super(DeepLabAccuracyPredictor, self).__init__()
         if not enet:
-            self.net1 = DeepLab(num_classes=num_classes, backbone=backbone, output_stride=output_stride,
-                                sync_bn=sync_bn, freeze_bn=freeze_bn, mc_dropout=mc_dropout)
+            self.deeplab = DeepLab(num_classes=num_classes, backbone=backbone, output_stride=output_stride,
+                                   sync_bn=sync_bn, freeze_bn=freeze_bn, mc_dropout=mc_dropout)
         else:
-            self.net1 = ENet(num_classes=num_classes, encoder_relu=True, decoder_relu=True)
+            self.deeplab = ENet(num_classes=num_classes, encoder_relu=True, decoder_relu=True)
         self.unet = UNet(3 + num_classes, 2)
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
-        deeplab_activations = self.net1(x)
-        unet_input = torch.cat([self.softmax(deeplab_activations), x], dim=1)
+        deeplab_activations = self.deeplab(x)
+        unet_input = torch.cat([self.softmax(deeplab_activations.detach()), x], dim=1)
         unet_activations = self.unet(unet_input)
         return deeplab_activations, unet_activations
 
     def get_1x_lr_params(self):
-        return self.net1.get_1x_lr_params()
+        return self.deeplab.get_1x_lr_params()
 
     def get_10x_lr_params(self):
-        return self.net1.get_10x_lr_params()
+        return self.deeplab.get_10x_lr_params()
 
     def get_enet_params(self):
-        return self.net1.parameters()
+        return self.deeplab.parameters()
 
     def get_unet_params(self):
         return self.unet.parameters()

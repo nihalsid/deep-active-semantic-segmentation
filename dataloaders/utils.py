@@ -31,8 +31,8 @@ def create_cityscapes_label_colormap():
 def create_binary_colormap():
 
     return {
-        0: [135, 8, 44],
-        1: [12, 96, 0],
+        0: [255, 20, 0],
+        1: [0, 0, 127],
         255: [255, 255, 255]
     }
 

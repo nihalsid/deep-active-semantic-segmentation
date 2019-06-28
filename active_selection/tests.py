@@ -78,17 +78,17 @@ def test_entropy_map_for_images():
     args = dotdict(args)
     dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
     train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
-                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
-    val_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
-                                                      crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+                                                        crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+    # val_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+    #                                                  crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
     model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False, mc_dropout=True)
 
     model = torch.nn.DataParallel(model, device_ids=[0])
     patch_replication_callback(model)
     model = model.cuda()
 
-    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes',
-                                         'al_4-variance-scratch_ep100-bs_125-deeplab-mobilenet-bs_12-513x513', 'run_0425', 'best.pth.tar'))
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
+                                         'alefw_1-mc_vote_entropy_images-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0002', 'best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
 
     model.eval()
@@ -97,7 +97,7 @@ def test_entropy_map_for_images():
     # validation(model, DataLoader(train_set, batch_size=2, shuffle=False), args)
 
     active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    print(active_selector.get_vote_entropy_for_images(model, train_set.current_image_paths[:10], 5))
+    print(active_selector.get_vote_entropy_for_images(model, train_set.current_image_paths[:2], 1))
 
 
 def test_entropy_map_for_images_enet():
@@ -505,18 +505,18 @@ def test_ceal():
     args = dotdict(args)
     dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
     train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
-                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+                                                        crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
 
     model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False)
     model = torch.nn.DataParallel(model, device_ids=[0])
     patch_replication_callback(model)
     model = model.cuda()
 
-    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
-                                         'base_0-deeplab-mobilenet-bs12-513x513', 'model_best.pth.tar'))
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
+                                         'alefw_10-ceal_confidence-increment_scratch_ep200-bs_125-deeplab-mobilenet-bs_5-513x513', 'run_0002', 'best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     active_selector = ActiveSelectionCEAL(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    # print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:10], 5))
+    print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:2], 1))
     # print(active_selector.get_least_margin_samples(model, train_set.current_image_paths[:10], 5))
     # print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths[:10], 5))
     # print(active_selector.get_fusion_of_confidence_margin_entropy_samples(model, train_set.current_image_paths[:20], 3))
@@ -536,7 +536,7 @@ def test_ceal():
             plt.imshow(image_unnormalized)
             plt.subplot(212)
             plt.imshow(gt_colored)
-            plt.show(block=True)
+            # plt.show(block=True)
 
 
 def test_max_set_cover():
@@ -1047,7 +1047,7 @@ def test_gradient_visualization():
     patch_replication_callback(model)
     model = model.cuda()
     checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
-                                         'albnf_15-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0031', 'best.pth.tar'))
+                                         'alefw_7-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0031', 'best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     model.eval()
 
@@ -1062,10 +1062,9 @@ def test_gradient_visualization():
         un_in = torch.cuda.FloatTensor(torch.cat([softmax(dl_out), image_batch], dim=1).detach().cpu().numpy())
         un_in.requires_grad = True
         un_clean_out = model.module.unet(un_in)
+        un_clean_out[0, 1, :, :].backward(torch.ones_like(un_clean_out[0, 1, :, :]).cuda())
 
-        un_clean_out.backward(torch.ones_like(un_clean_out).cuda())
-
-        grad = torch.norm(un_in.grad, p=2, dim=1)
+        grad = un_in.grad.sum(1)  # torch.norm(un_in.grad, p=2, dim=1)
         min_val = grad.min()
         max_val = grad.max()
         minmax_norm = lambda x: x.add_(-min_val).mul_(1.0 / (max_val - min_val))
@@ -1249,7 +1248,7 @@ def test_create_inaccuracy_maps_with_region_cityscapes():
     patch_replication_callback(model)
     model = model.cuda()
     checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
-                                         'albnf_15-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0031', 'best.pth.tar'))
+                                         'alefw_7-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0031', 'best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     model.eval()
 
@@ -1258,9 +1257,9 @@ def test_create_inaccuracy_maps_with_region_cityscapes():
 
     region_size = 127
     active_selector = ActiveSelectionAccuracy(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    train_set.image_paths = train_set.image_paths[:3]
+    train_set.image_paths = train_set.image_paths[:5]
     print(train_set.get_fraction_of_labeled_data())
-    new_regions, counts = active_selector.get_least_accurate_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
+    new_regions, counts = active_selector.get_least_accurate_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 0.5)
     train_set.expand_training_set(new_regions, counts * region_size * region_size)
     print(train_set.get_fraction_of_labeled_data())
     # new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
@@ -1276,22 +1275,110 @@ def test_create_inaccuracy_maps_with_region_cityscapes():
             image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
             plt.figure()
             plt.title('plot')
-            plt.subplot(211)
+            plt.subplot(121)
             plt.imshow(image_unnormalized)
-            plt.subplot(212)
+            plt.subplot(122)
             plt.imshow(gt_colored)
 
     plt.show(block=True)
 
 
+def test_inaccuracy_heatmaps():
+    import matplotlib
+    import matplotlib.pyplot as plt
+    from dataloaders.utils import map_segmentations_to_colors, map_segmentation_to_colors, map_binary_output_mask_to_colors
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 2
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+
+    model = DeepLabAccuracyPredictor(backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
+                                         'alefw_7-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0031', 'best.pth.tar'))
+    model.module.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=True, num_workers=0)
+    softmax = nn.Softmax(dim=1)
+
+    rgb_images = []
+    sem_gt_images = []
+    sem_pred_images = []
+    acc_gt_images = []
+    acc_pred_images = []
+
+    for i, sample in enumerate(dataloader):
+        print(train_set.current_image_paths[i])
+        image_batch = sample['image'].cuda()
+        dl_out, un_out = model(image_batch)
+        un_target = dl_out.argmax(1).cpu().squeeze() == sample['label'].long()
+        un_target[sample['label'] == 255] = 255
+        for j in range(sample['image'].size()[0]):
+            image = sample['image'].cpu().numpy()
+            gt = sample['label'].cpu().numpy()
+            gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), 'cityscapes')
+            image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
+            plt.figure()
+            plt.title('plot')
+            plt.subplot(231)
+            plt.imshow(image_unnormalized)
+            rgb_images.append(image_unnormalized)
+            plt.subplot(232)
+            np_un_target = np.array(un_target.numpy()[j]).astype(np.float32)
+            masked_target_array = np.ma.array(np_un_target, mask=np_un_target == 255)
+            masked_target_array = 1 - masked_target_array
+            cmap = matplotlib.cm.jet
+            cmap.set_bad('white', 1.)
+            plt.imshow(masked_target_array, cmap=cmap)
+            acc_gt_images.append(cmap(masked_target_array))
+            #plt.imshow(map_segmentation_to_colors(np.array(un_target.numpy()[j]).astype(np.uint8), 'binary'))
+            plt.subplot(233)
+            plt.imshow(gt_colored)
+            sem_gt_images.append(gt_colored)
+            plt.subplot(236)
+            plt.imshow(map_segmentation_to_colors(np.array(dl_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'cityscapes'))
+            sem_pred_images.append(map_segmentation_to_colors(np.array(dl_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8), 'cityscapes'))
+            plt.subplot(235)
+            np_un_out = np.array(softmax(un_out.detach()).cpu().numpy()[j, 0, :, :])
+            masked_out_array = np.ma.array(np_un_out, mask=np_un_target == 255)
+            plt.imshow(masked_out_array, cmap=cmap)
+            acc_pred_images.append(cmap(masked_out_array))
+            # plt.show(block=True)
+
+        if i == 5:
+            break
+
+    for prefix, arr in zip(['rgb', 'sem_gt', 'sem_pred', 'acc_gt', 'acc_pred'], [rgb_images, sem_gt_images, sem_pred_images, acc_gt_images, acc_pred_images]):
+        stacked_image = np.ones(((arr[0].shape[0] + 20) * len(arr), arr[0].shape[1], arr[0].shape[2]),
+                                dtype=arr[0].dtype) * (255 if arr[0].dtype == np.uint8 else 1)
+        for i, im in enumerate(arr):
+            stacked_image[i * (arr[0].shape[0] + 20): i * (arr[0].shape[0] + 20) + arr[0].shape[0], :, :] = im
+        plt.imsave('%s.png' % (prefix), stacked_image)
+
+    active_selector = ActiveSelectionAccuracy(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
+    print(active_selector.get_least_accurate_samples(model, train_set.current_image_paths[:10], 5, 'softmax'))
+
+
 if __name__ == '__main__':
-    # test_entropy_map_for_images()
+    test_entropy_map_for_images()
     # test_nms()
     # test_create_region_maps_with_region_cityscapes()
     # test_visualize_feature_space()
     # test_core_set()
     # test_kcenter()
-    # test_ceal()
+    test_ceal()
     # test_max_set_cover()
     # test_region_features()
     # test_image_features()
@@ -1305,4 +1392,6 @@ if __name__ == '__main__':
     # test_create_inaccuracy_maps_with_region_cityscapes()
     # test_create_region_maps_with_region_pascal()
     # test_image_features_enet()
-    test_entropy_map_for_images_enet()
+    # test_entropy_map_for_images_enet()
+    # test_inaccuracy_heatmaps()
+    # test_create_inaccuracy_maps_with_region_cityscapes()
