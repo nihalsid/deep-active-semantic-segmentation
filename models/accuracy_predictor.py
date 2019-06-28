@@ -7,14 +7,18 @@ from models.enet import ENet
 
 class DeepLabAccuracyPredictor(nn.Module):
 
-    def __init__(self, backbone, output_stride, num_classes, sync_bn, freeze_bn, mc_dropout, enet=False):
+    def __init__(self, backbone, output_stride, num_classes, sync_bn, freeze_bn, mc_dropout, enet=False, symmetry=False):
         super(DeepLabAccuracyPredictor, self).__init__()
         if not enet:
             self.deeplab = DeepLab(num_classes=num_classes, backbone=backbone, output_stride=output_stride,
                                    sync_bn=sync_bn, freeze_bn=freeze_bn, mc_dropout=mc_dropout)
         else:
             self.deeplab = ENet(num_classes=num_classes, encoder_relu=True, decoder_relu=True)
-        self.unet = UNet(3 + num_classes, 2)
+        if not symmetry:
+            self.unet = UNet(3 + num_classes, 2)
+        else:
+            self.unet = DeepLab(num_classes=2, backbone=backbone, output_stride=8,
+                                sync_bn=sync_bn, freeze_bn=freeze_bn, mc_dropout=False, input_channels=3 + num_classes, pretrained=False)
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
@@ -23,19 +27,31 @@ class DeepLabAccuracyPredictor(nn.Module):
         unet_activations = self.unet(unet_input)
         return deeplab_activations, unet_activations
 
-    def get_1x_lr_params(self):
-        return self.deeplab.get_1x_lr_params()
+    def get_param_list(self, lr, enet, symmetry):
+        params = []
+        if enet:
+            params.append({'params': self.deeplab.parameters(), 'lr': lr})
+        else:
+            params.append({'params': self.deeplab.get_1x_lr_params(), 'lr': lr})
+            params.append({'params': self.deeplab.get_10x_lr_params(), 'lr': lr * 10})
+        if symmetry:
+            params.append({'params': self.unet.get_1x_lr_params(), 'lr': lr})
+            params.append({'params': self.unet.get_10x_lr_params(), 'lr': lr * 10})
+        else:
+            params.append({'params': self.unet.parameters(), 'lr': lr})
+        return params
 
-    def get_10x_lr_params(self):
-        return self.deeplab.get_10x_lr_params()
+if __name__ == '__main__':
 
-    def get_enet_params(self):
-        return self.deeplab.parameters()
+    model = DeepLabAccuracyPredictor(num_classes=19, backbone='mobilenet', output_stride=16,
+                                     sync_bn=False, freeze_bn=False, mc_dropout=False, enet=False, symmetry=True)
+    model.eval()
+    input = torch.rand(1, 3, 513, 513)
+    dl_out, un_out = model(input)
+    print(dl_out.size(), un_out.size())
+    print('NumElements: ', sum([p.numel() for p in model.parameters()]))
 
-    def get_unet_params(self):
-        return self.unet.parameters()
-
-
+'''
 if __name__ == "__main__":
     from dataloaders.dataset import active_cityscapes
     import os
@@ -98,3 +114,4 @@ if __name__ == "__main__":
             plt.show(block=True)
 
     deeplab_activations, unet_activations = model(input)
+'''

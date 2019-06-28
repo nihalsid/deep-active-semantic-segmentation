@@ -28,7 +28,7 @@ class ActiveCityscapesImage(cityscapes_base.ActiveCityscapesBase):
                 self.current_image_paths = [u'{}'.format(x.strip()).encode('ascii') for x in fptr.readlines() if x is not '']
                 self.remaining_image_paths = [x for x in self.image_paths if x not in self.current_image_paths]
                 print(f'# of current_image_paths = {len(self.current_image_paths)}, # of remaining_image_paths = {len(self.remaining_image_paths)}')
-        #self.current_image_paths = self.current_image_paths[:1]
+        self.current_image_paths = self.current_image_paths[:1]
         self.labeled_pixel_count = len(self.current_image_paths) * self.crop_size * self.crop_size
         self.memory_hog_mode = memory_hog_mode
         if self.memory_hog_mode:

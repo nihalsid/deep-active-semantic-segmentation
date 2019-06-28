@@ -10,7 +10,7 @@ import numpy as np
 
 class DeepLab(nn.Module):
 
-    def __init__(self, backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False):
+    def __init__(self, backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False, input_channels=3, pretrained=True):
 
         super(DeepLab, self).__init__()
 
@@ -19,7 +19,7 @@ class DeepLab(nn.Module):
         else:
             batchnorm = nn.BatchNorm2d
 
-        self.backbone = build_backbone(backbone, output_stride, batchnorm, mc_dropout)
+        self.backbone = build_backbone(backbone, output_stride, batchnorm, mc_dropout, input_channels, pretrained)
         self.aspp = ASPP(backbone, output_stride, batchnorm)
         self.decoder = Decoder(num_classes, backbone, batchnorm, mc_dropout)
         self.return_features = False
