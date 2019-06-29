@@ -7,6 +7,7 @@ from active_selection.base import ActiveSelectionBase
 from tqdm import tqdm
 import matplotlib
 from dataloaders.utils import map_segmentation_to_colors
+import time
 
 
 class ActiveSelectionCEAL(ActiveSelectionBase):
@@ -101,15 +102,15 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
         loader = DataLoader(paths_dataset.PathsDataset(self.env, images, self.crop_size, include_labels=True),
                             batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         entropies = []
-
+        #times = []
         with torch.no_grad():
             for sample in tqdm(loader):
                 image_batch = sample['image'].cuda()
                 label_batch = sample['label'].cuda()
+                #a = time.time()
                 softmax = torch.nn.Softmax2d()
                 output = softmax(model(image_batch))
                 num_classes = output.shape[1]
-
                 for batch_idx in range(output.shape[0]):
                     mask = (label_batch[batch_idx, :, :] < 0) | (label_batch[batch_idx, :, :] >= self.dataset_num_classes)
                     entropy_map = torch.cuda.FloatTensor(output.shape[2], output.shape[3]).fill_(0)
@@ -120,7 +121,8 @@ class ActiveSelectionCEAL(ActiveSelectionBase):
                     # prediction = np.argmax(output[batch_idx, :, :, :].cpu().numpy().squeeze(), axis=0)
                     # ActiveSelectionMCDropout._visualize_entropy(image_batch[batch_idx, :, :, :].cpu().numpy(), entropy_map.cpu().numpy(), prediction)
                     entropies.append(np.mean(entropy_map.cpu().numpy()))
-
+                #times.append(time.time() - a)
+        ##print(np.mean(times), np.std(times))
         return entropies
 
     def get_maximum_entropy_samples(self, model, images, selection_count):

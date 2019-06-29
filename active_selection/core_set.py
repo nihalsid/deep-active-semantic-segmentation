@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.metrics import pairwise_distances
 from active_selection.base import ActiveSelectionBase
 from tqdm import tqdm
+import time
 
 
 class ActiveSelectionCoreSet(ActiveSelectionBase):
@@ -50,13 +51,18 @@ class ActiveSelectionCoreSet(ActiveSelectionBase):
         model.eval()
         model.module.set_return_features(True)
 
+        #times = []
+
         average_pool_stride = average_pool_kernel_size[0] // 2
         with torch.no_grad():
             for batch_idx, sample in enumerate(tqdm(loader)):
+                #a = time.time()
                 _, features_batch = model(sample.cuda())
                 features_batch = F.avg_pool2d(features_batch, average_pool_kernel_size, average_pool_stride)
                 for feature_idx in range(features_batch.shape[0]):
                     features[batch_idx * self.dataloader_batch_size + feature_idx, :] = features_batch[feature_idx, :, :, :].cpu().numpy().flatten()
+                #times.append(time.time() - a)
+        #print(np.mean(times), np.std(times))
 
         model.module.set_return_features(False)
         selected_indices = self._select_batch(features, list(range(len(already_selected_image_batch))), selection_size)

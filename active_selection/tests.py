@@ -264,21 +264,22 @@ def test_nms_on_entropy_maps():
     print(active_selector.create_region_maps(model, train_set.current_image_paths[:12], 127, 4)[0])
 
 
+
 def test_create_region_maps_with_region_cityscapes():
     import matplotlib.pyplot as plt
     from dataloaders.dataset import region_cityscapes
     args = {
         'base_size': 513,
         'crop_size': 513,
-        'seed_set': 'set_dummy.txt',
-        'batch_size': 12
+        'seed_set': 'set_0.txt',
+        'batch_size': 5
     }
 
     args = dotdict(args)
     dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
 
     train_set = region_cityscapes.ActiveCityscapesRegion(path=dataset_path, base_size=args.base_size,
-                                                         crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+                                                         crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
 
     model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet', output_stride=16, sync_bn=False, freeze_bn=False, mc_dropout=True)
 
@@ -297,7 +298,7 @@ def test_create_region_maps_with_region_cityscapes():
 
     region_size = 127
     active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    train_set.image_paths = train_set.image_paths[:3]
+    #train_set.image_paths = train_set.image_paths[:3]
     print(train_set.get_fraction_of_labeled_data())
     new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
     train_set.expand_training_set(new_regions, counts * region_size * region_size)
@@ -467,7 +468,7 @@ def test_core_set():
         'base_size': 513,
         'crop_size': 513,
         'seed_set': 'set_0.txt',
-        'batch_size': 12,
+        'batch_size': 5,
         'cuda': True
     }
 
@@ -501,7 +502,7 @@ def test_core_set():
         labels.append(cluster)
 
     active_selection = ActiveSelectionCoreSet(train_set.env, args.crop_size, args.batch_size)
-    selected_clusters = active_selection.get_k_center_greedy_selections(10, model, all_paths[1:], [all_paths[0]])
+    selected_clusters = active_selection.get_k_center_greedy_selections(175, model, train_set.remaining_image_paths, train_set.current_image_paths)
 
 
 def test_core_set_enet():
@@ -530,8 +531,8 @@ def test_core_set_enet():
     patch_replication_callback(model)
     model = model.cuda()
 
-    checkpoint = torch.load(os.path.join(constants.RUNS, 'cityscapes',
-                                         'base_efw-enetf-bs_4-no_sched-1024x512-lr_0.01\\experiment_3', 'checkpoint.pth.tar'))
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
+                                         'alefw_10-ceal_confidence-increment_scratch_ep200-bs_125-deeplab-mobilenet-bs_5-513x513', 'run_0002', 'best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     model.eval()
     dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
@@ -550,7 +551,7 @@ def test_core_set_enet():
         labels.append(cluster)
 
     active_selection = ActiveSelectionCoreSet(train_set.env, args.crop_size, args.batch_size)
-    selected_clusters = active_selection.get_k_center_greedy_selections(10, model, all_paths[1:], [all_paths[0]])
+    selected_clusters = active_selection.get_k_center_greedy_selections(175, model, train_set.remaining_paths, train_set.current_image_paths)
 
 
 def test_kcenter():
@@ -571,7 +572,7 @@ def test_ceal():
         'base_size': 513,
         'crop_size': 513,
         'seed_set': 'set_0.txt',
-        'batch_size': 12,
+        'batch_size': 5,
         'cuda': True
     }
 
@@ -589,9 +590,9 @@ def test_ceal():
                                          'alefw_10-ceal_confidence-increment_scratch_ep200-bs_125-deeplab-mobilenet-bs_5-513x513', 'run_0002', 'best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     active_selector = ActiveSelectionCEAL(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:2], 1))
+    #print(active_selector.get_least_confident_samples(model, train_set.current_image_paths[:2], 1))
     # print(active_selector.get_least_margin_samples(model, train_set.current_image_paths[:10], 5))
-    # print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths[:10], 5))
+    print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths, 175))
     # print(active_selector.get_fusion_of_confidence_margin_entropy_samples(model, train_set.current_image_paths[:20], 3))
     # weak_labels = active_selector.get_weakly_labeled_data(model, train_set.remaining_image_paths[:50], 0.70)
     # train_set.add_weak_labels(weak_labels)
@@ -1002,7 +1003,7 @@ def test_accuracy_est_selector():
     patch_replication_callback(model)
     model = model.cuda()
     checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
-                                         'alefw_7-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0002', 'best.pth.tar'))
+                                         'eval_8-accuracy_prediction_eval-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-no_end_to_end-lr_0.01', 'run_0002', 'best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     model.eval()
 
@@ -1391,7 +1392,7 @@ def test_create_inaccuracy_maps_with_region_cityscapes():
     patch_replication_callback(model)
     model = model.cuda()
     checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
-                                         'alefw_7-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0031', 'best.pth.tar'))
+                                         'eval_8-accuracy_prediction_eval-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-no_end_to_end-lr_0.01', 'run_0014', 'best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     model.eval()
 
@@ -1521,7 +1522,7 @@ if __name__ == '__main__':
     # test_visualize_feature_space()
     # test_core_set()
     # test_kcenter()
-    # test_ceal()
+    test_ceal()
     # test_max_set_cover()
     # test_region_features()
     # test_image_features()
@@ -1536,6 +1537,6 @@ if __name__ == '__main__':
     # test_image_features_enet()
     # test_entropy_map_for_images_enet()
     # test_inaccuracy_heatmaps()
-    test_create_inaccuracy_maps_with_region_cityscapes()
+    # test_create_inaccuracy_maps_with_region_cityscapes()
     # draw_predictions_acc_sel()
     # get_validation_mIoUs()

@@ -133,12 +133,14 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
         weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
 
         map_ctr = 0
+        #times = []
         # commented lines are for visualization and verification
         #entropy_maps = []
         #base_images = []
         for sample in tqdm(loader):
             image_batch = sample['image'].cuda()
             label_batch = sample['label'].cuda()
+            #a = time.time()
             for img_idx, entropy_map in enumerate(self._get_vote_entropy_for_batch(model, image_batch, label_batch)):
                 ActiveSelectionMCDropout.suppress_labeled_entropy(entropy_map, existing_regions[map_ctr])
                 #base_images.append(image_batch[img_idx, :, :, :].cpu().numpy())
@@ -146,12 +148,12 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
                 score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(entropy_map.unsqueeze(
                     0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
                 map_ctr += 1
-
+            #times.append(time.time()-a)
         min_val = score_maps.min()
         max_val = score_maps.max()
         minmax_norm = lambda x: x.add_(-min_val).mul_(1.0 / (max_val - min_val))
         minmax_norm(score_maps)
-
+        #print(np.mean(times), np.std(times))
         num_requested_indices = (selection_size * base_size * base_size) / (region_size * region_size)
         regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps.cpu(), region_size, num_requested_indices)
         # print(f'Requested/Selected indices {num_requested_indices}/{num_selected_indices}')
