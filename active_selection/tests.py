@@ -3,6 +3,7 @@ import numpy as np
 import random
 from dataloaders.dataset import paths_dataset
 from dataloaders.dataset import active_cityscapes
+from dataloaders.dataset import active_pascal
 from models.sync_batchnorm.replicate import patch_replication_callback
 from models.deeplab import *
 from models.accuracy_predictor import *
@@ -25,6 +26,78 @@ class dotdict(dict):
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
+
+def get_validation_mIoUs():
+
+    def validation(model, val_loader, args, iteration):
+
+        from utils.loss import SegmentationLosses
+        from utils.metrics import Evaluator
+
+        deeplab_evaluator = Evaluator(19)
+        deeplab_evaluator.reset()
+        unet_evaluator = Evaluator(19)
+        unet_evaluator.reset()
+
+        model.eval()
+
+        tbar = tqdm(val_loader, desc='\r')
+
+        for i, sample in enumerate(tbar):
+            image, deeplab_target = sample['image'], sample['label']
+
+            image, deeplab_target = image.cuda(), deeplab_target.cuda()
+
+            with torch.no_grad():
+                deeplab_output, unet_output = model(image)
+
+            unet_target = deeplab_output.argmax(1).squeeze() == deeplab_target.long()
+            unet_target[deeplab_target == 255] = 255
+
+            pred = deeplab_output.data.cpu().numpy()
+            deeplab_target = deeplab_target.cpu().numpy()
+            pred = np.argmax(pred, axis=1)
+
+            deeplab_evaluator.add_batch(deeplab_target, pred)
+            unet_evaluator.add_batch(unet_target.cpu().numpy(), np.argmax(unet_output.cpu().numpy(), axis=1))
+
+        # Fast test during the training
+        Acc = deeplab_evaluator.Pixel_Accuracy()
+        Acc_class = deeplab_evaluator.Pixel_Accuracy_Class()
+        mIoU = deeplab_evaluator.Mean_Intersection_over_Union()
+        FWIoU = deeplab_evaluator.Frequency_Weighted_Intersection_over_Union()
+        UNetAcc = unet_evaluator.Pixel_Accuracy()
+        UNetmIoU = unet_evaluator.Mean_Intersection_over_Union()
+        print('Validation', iteration, ":")
+        print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}, UNetAcc: {}, UNetmIoU: {}".format(Acc, Acc_class, mIoU, FWIoU, UNetAcc, UNetmIoU))
+
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 5
+    }
+
+    args = dotdict(args)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+    # val_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+    #                                                  crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+    model = DeepLabAccuracyPredictor(num_classes=train_set.NUM_CLASSES, backbone='mobilenet',
+                                     output_stride=16, sync_bn=False, freeze_bn=False, mc_dropout=False)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+    dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+
+    for step in [2, 6, 10, 14, 18, 23, 27, 31]:
+        checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_region',
+                                             'eval_17-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_%04d' % step, 'best.pth.tar'))
+        model.module.load_state_dict(checkpoint['state_dict'])
+        validation(model, dataloader, args, step)
 
 
 def test_entropy_map_for_images():
@@ -72,7 +145,7 @@ def test_entropy_map_for_images():
         'crop_size': 513,
         'seed_set': '',
         'seed_set': 'set_0.txt',
-        'batch_size': 12
+        'batch_size': 5
     }
 
     args = dotdict(args)
@@ -97,7 +170,7 @@ def test_entropy_map_for_images():
     # validation(model, DataLoader(train_set, batch_size=2, shuffle=False), args)
 
     active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    print(active_selector.get_vote_entropy_for_images(model, train_set.current_image_paths[:2], 1))
+    print(active_selector.get_vote_entropy_for_images(model, train_set.current_image_paths, 10))
 
 
 def test_entropy_map_for_images_enet():
@@ -520,7 +593,7 @@ def test_ceal():
     # print(active_selector.get_least_margin_samples(model, train_set.current_image_paths[:10], 5))
     # print(active_selector.get_maximum_entropy_samples(model, train_set.current_image_paths[:10], 5))
     # print(active_selector.get_fusion_of_confidence_margin_entropy_samples(model, train_set.current_image_paths[:20], 3))
-    #weak_labels = active_selector.get_weakly_labeled_data(model, train_set.remaining_image_paths[:50], 0.70)
+    # weak_labels = active_selector.get_weakly_labeled_data(model, train_set.remaining_image_paths[:50], 0.70)
     # train_set.add_weak_labels(weak_labels)
 
     dataloader = DataLoader(train_set, batch_size=10, shuffle=False, num_workers=0)
@@ -916,19 +989,20 @@ def test_accuracy_est_selector():
         'crop_size': 513,
         'seed_set': '',
         'seed_set': 'set_0.txt',
-        'batch_size': 12
+        'batch_size': 5
     }
 
     args = dotdict(args)
     dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
     train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
-                                                        crop_size=args.crop_size, split='train', init_set=args.seed_set, overfit=False)
+                                                        crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
 
     model = DeepLabAccuracyPredictor(backbone='mobilenet', output_stride=16, num_classes=19, sync_bn=True, freeze_bn=False, mc_dropout=False)
     model = torch.nn.DataParallel(model, device_ids=[0])
     patch_replication_callback(model)
     model = model.cuda()
-    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image', 'accuracy_predictor_50_point_fit', 'run_0002', 'checkpoint.pth.tar'))
+    checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_image',
+                                         'alefw_7-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_0002', 'best.pth.tar'))
     model.module.load_state_dict(checkpoint['state_dict'])
     model.eval()
 
@@ -963,7 +1037,76 @@ def test_accuracy_est_selector():
             break
 
     active_selector = ActiveSelectionAccuracy(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    print(active_selector.get_least_accurate_samples(model, train_set.current_image_paths[:10], 5, 'softmax'))
+    print(active_selector.get_least_accurate_samples(model, train_set.current_image_paths, 5, 'softmax'))
+
+
+def draw_predictions_acc_sel():
+    import matplotlib.pyplot as plt
+    args = {
+        'base_size': 513,
+        'crop_size': 513,
+        'seed_set': '',
+        'seed_set': 'set_0.txt',
+        'batch_size': 5
+    }
+
+    args = dotdict(args)
+    ds = 'cityscapes'
+    dataset_path = os.path.join(constants.DATASET_ROOT, ds)
+    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
+                                                        crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+
+    model = DeepLab(num_classes=train_set.NUM_CLASSES, backbone='mobilenet',
+                    output_stride=16, sync_bn=False, freeze_bn=False, mc_dropout=False)
+    model = torch.nn.DataParallel(model, device_ids=[0])
+    patch_replication_callback(model)
+    model = model.cuda()
+
+    # for (check_params, name) in
+    # [["active_cityscapes_image/eval_0-random_images-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01/run_0014",
+    # "random"],
+    # ["active_cityscapes_region/eval_6-mc_vote_entropy_regions_128-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01/run_0014",
+    # "acc_pred_14"],
+    # ["active_cityscapes_region/eval_6-mc_vote_entropy_regions_128-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01/run_0031",
+    # "full"]]:
+    # [['active_pascal_image/evalpa_0-random_images-scratch_ep150-abs_60-deeplab-mobilenet-bs_5-512x512-lr_0.007/run_0016', "pa_random"], ["pascal/model_best.pth", "pa_full"]]:
+
+    # [["active_pascal_region/evalpa_17-region_accuracy_prediction_ep150-abs_60-deeplab-mobilenet-bs_5-512x512-lr_0.007/run_0016", "pa_al_pred_14"]]:
+    for (check_params, name) in [["active_cityscapes_image/eval_0-random_images-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01/run_0014", "random"]]:
+        checkpoint = torch.load(os.path.join(constants.RUNS, check_params, 'best.pth.tar'))
+        model.module.load_state_dict(checkpoint['state_dict'])
+        model.eval()
+
+        dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
+        rgb_images = []
+        sem_pred_images = []
+        gt_images = []
+        for i, sample in enumerate(dataloader):
+            print(train_set.current_image_paths[i])
+            image_batch = sample['image'].cuda()
+            dl_out = model(image_batch)
+            for j in range(sample['image'].size()[0]):
+                image = sample['image'].cpu().numpy()
+                gt = sample['label'].cpu().numpy()
+                gt_colored = map_segmentation_to_colors(np.array(gt[j]).astype(np.uint8), ds)
+                image_unnormalized = ((np.transpose(image[j], axes=[1, 2, 0]) * (0.229, 0.224, 0.225) + (0.485, 0.456, 0.406)) * 255).astype(np.uint8)
+                rgb_images.append(image_unnormalized)
+                pred = np.array(dl_out.argmax(1).detach().cpu().numpy()[j]).astype(np.uint8)
+                pred[gt[j] == 255] = 255
+                sem_pred_images.append((map_segmentation_to_colors(pred, ds) * 255).astype(np.uint8))
+                gt_images.append((gt_colored * 255).astype(np.uint8))
+            if i == 60:
+                break
+
+        from PIL import Image
+
+        for i, (r, s) in enumerate(zip(rgb_images, sem_pred_images)):
+            blend = (r * 0.5 + s * 0.5).astype(np.uint8)
+            Image.fromarray(blend).save('%s_%d.jpg' % (name, i))
+
+    for i, (r, s) in enumerate(zip(rgb_images, gt_images)):
+        blend = (r * 0.5 + s * 0.5).astype(np.uint8)
+        Image.fromarray(blend).save('gt_%d.jpg' % (i))
 
 
 def test_noisy_create_region_maps_with_region_cityscapes():
@@ -1057,7 +1200,7 @@ def test_gradient_visualization():
     for i, sample in enumerate(dataloader):
         print(train_set.current_image_paths[i])
         image_batch = sample['image'].cuda()
-        #image_batch.requires_grad = True
+        # image_batch.requires_grad = True
         dl_out, un_out = model(image_batch)
         un_in = torch.cuda.FloatTensor(torch.cat([softmax(dl_out), image_batch], dim=1).detach().cpu().numpy())
         un_in.requires_grad = True
@@ -1233,8 +1376,8 @@ def test_create_inaccuracy_maps_with_region_cityscapes():
     args = {
         'base_size': 513,
         'crop_size': 513,
-        'seed_set': 'set_dummy.txt',
-        'batch_size': 12
+        'seed_set': 'set_0.txt',
+        'batch_size': 5
     }
 
     args = dotdict(args)
@@ -1257,9 +1400,9 @@ def test_create_inaccuracy_maps_with_region_cityscapes():
 
     region_size = 127
     active_selector = ActiveSelectionAccuracy(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
-    train_set.image_paths = train_set.image_paths[:5]
+    train_set.image_paths = train_set.image_paths[:2000]
     print(train_set.get_fraction_of_labeled_data())
-    new_regions, counts = active_selector.get_least_accurate_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 0.5)
+    new_regions, counts = active_selector.get_least_accurate_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 175)
     train_set.expand_training_set(new_regions, counts * region_size * region_size)
     print(train_set.get_fraction_of_labeled_data())
     # new_regions, counts = active_selector.create_region_maps(model, train_set.image_paths, train_set.get_existing_region_maps(), region_size, 1)
@@ -1343,7 +1486,7 @@ def test_inaccuracy_heatmaps():
             cmap.set_bad('white', 1.)
             plt.imshow(masked_target_array, cmap=cmap)
             acc_gt_images.append(cmap(masked_target_array))
-            #plt.imshow(map_segmentation_to_colors(np.array(un_target.numpy()[j]).astype(np.uint8), 'binary'))
+            # plt.imshow(map_segmentation_to_colors(np.array(un_target.numpy()[j]).astype(np.uint8), 'binary'))
             plt.subplot(233)
             plt.imshow(gt_colored)
             sem_gt_images.append(gt_colored)
@@ -1372,13 +1515,13 @@ def test_inaccuracy_heatmaps():
 
 
 if __name__ == '__main__':
-    test_entropy_map_for_images()
+    # test_entropy_map_for_images()
     # test_nms()
     # test_create_region_maps_with_region_cityscapes()
     # test_visualize_feature_space()
     # test_core_set()
     # test_kcenter()
-    test_ceal()
+    # test_ceal()
     # test_max_set_cover()
     # test_region_features()
     # test_image_features()
@@ -1389,9 +1532,10 @@ if __name__ == '__main__':
     # test_gradient_selection()
     # test_gradient_visualization()
     # test_unsure_samples()
-    # test_create_inaccuracy_maps_with_region_cityscapes()
     # test_create_region_maps_with_region_pascal()
     # test_image_features_enet()
     # test_entropy_map_for_images_enet()
     # test_inaccuracy_heatmaps()
-    # test_create_inaccuracy_maps_with_region_cityscapes()
+    test_create_inaccuracy_maps_with_region_cityscapes()
+    # draw_predictions_acc_sel()
+    # get_validation_mIoUs()

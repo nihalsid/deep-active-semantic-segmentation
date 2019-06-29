@@ -11,6 +11,7 @@ import constants
 import random
 from scipy import stats
 import matplotlib.cm
+import time
 
 
 class ActiveSelectionMCDropout(ActiveSelectionBase):
@@ -178,12 +179,16 @@ class ActiveSelectionMCDropout(ActiveSelectionBase):
                             batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
 
         entropies = []
+        #times = []
         for sample in tqdm(loader):
             image_batch = sample['image'].cuda()
             label_batch = sample['label'].cuda()
+            #a = time.time()
             entropies.extend([torch.mean(x).cpu().item()
                               for x in self._get_vote_entropy_for_batch(model, image_batch, label_batch)])
+            #times.append(time.time() - a)
 
+        #print(np.mean(times), np.std(times))
         model.eval()
         selected_samples = list(zip(*sorted(zip(entropies, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
         return selected_samples

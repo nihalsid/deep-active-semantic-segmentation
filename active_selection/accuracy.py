@@ -43,11 +43,14 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
                             batch_size=self.dataloader_batch_size, shuffle=False, num_workers=0)
         num_inaccurate_pixels = []
         softmax = torch.nn.Softmax2d()
+        #times = []
         with torch.no_grad():
             for sample in tqdm(loader):
                 image_batch = sample['image'].cuda()
                 label_batch = sample['label'].cuda()
+                #a = time.time()
                 deeplab_output, unet_output = model(image_batch)
+
                 if mode == 'softmax':
                     prediction = softmax(unet_output)
                     for idx in range(prediction.shape[0]):
@@ -62,6 +65,8 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
                         num_inaccurate_pixels.append(incorrect.sum().cpu().float().item())
                 else:
                     raise NotImplementedError
+                #times.append(time.time() - a)
+        #print(np.mean(times), np.std(times))
         selected_samples = list(zip(*sorted(zip(num_inaccurate_pixels, images), key=lambda x: x[0], reverse=True)))[1][:selection_count]
         return selected_samples
 
@@ -131,6 +136,7 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
         weights = torch.cuda.FloatTensor(region_size, region_size).fill_(1.)
 
         map_ctr = 0
+        times = []
         # commented lines are for visualization and verification
         #error_maps = []
         #base_images = []
@@ -139,6 +145,8 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
             for sample in tqdm(loader):
                 image_batch = sample['image'].cuda()
                 label_batch = sample['label'].cuda()
+
+                a = time.time()
                 deeplab_output, unet_output = model(image_batch)
                 prediction = softmax(unet_output)
                 for idx in range(prediction.shape[0]):
@@ -151,13 +159,16 @@ class ActiveSelectionAccuracy(ActiveSelectionBase):
                     score_maps[map_ctr, :, :] = torch.nn.functional.conv2d(incorrect.unsqueeze(
                         0).unsqueeze(0), weights.unsqueeze(0).unsqueeze(0)).squeeze().squeeze()
                     map_ctr += 1
+                times.append(time.time() - a)
         min_val = score_maps.min()
         max_val = score_maps.max()
         minmax_norm = lambda x: x.add_(-min_val).mul_(1.0 / (max_val - min_val))
         minmax_norm(score_maps)
 
         num_requested_indices = (selection_size * base_size * base_size) / (region_size * region_size)
+        b = time.time()
         regions, num_selected_indices = ActiveSelectionMCDropout.square_nms(score_maps.cpu(), region_size, num_requested_indices)
+        print(np.mean(times), np.std(times), time.time() - b)
         # print(f'Requested/Selected indices {num_requested_indices}/{num_selected_indices}')
 
         # for i in range(len(regions)):
