@@ -4,6 +4,7 @@ import random
 from dataloaders.dataset import paths_dataset
 from dataloaders.dataset import active_cityscapes
 from dataloaders.dataset import active_pascal
+from dataloaders.dataset import pascal
 from models.sync_batchnorm.replicate import patch_replication_callback
 from models.deeplab import *
 from models.accuracy_predictor import *
@@ -30,14 +31,14 @@ class dotdict(dict):
 
 def get_validation_mIoUs():
 
-    def validation(model, val_loader, args, iteration):
+    def validation(model, val_loader, args, iteration, num_classes):
 
         from utils.loss import SegmentationLosses
         from utils.metrics import Evaluator
 
-        deeplab_evaluator = Evaluator(19)
+        deeplab_evaluator = Evaluator(num_classes)
         deeplab_evaluator.reset()
-        unet_evaluator = Evaluator(19)
+        unet_evaluator = Evaluator(num_classes)
         unet_evaluator.reset()
 
         model.eval()
@@ -73,17 +74,17 @@ def get_validation_mIoUs():
         print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}, UNetAcc: {}, UNetmIoU: {}".format(Acc, Acc_class, mIoU, FWIoU, UNetAcc, UNetmIoU))
 
     args = {
-        'base_size': 513,
-        'crop_size': 513,
+        'base_size': 512,
+        'crop_size': -1,
         'seed_set': '',
         'seed_set': 'set_0.txt',
         'batch_size': 5
     }
 
     args = dotdict(args)
-    dataset_path = os.path.join(constants.DATASET_ROOT, 'cityscapes')
-    train_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
-                                                        crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
+    dataset_path = os.path.join(constants.DATASET_ROOT, 'pascal')
+    train_set = pascal.Pascal(path=dataset_path, base_size=args.base_size,
+                              crop_size=args.crop_size, split='train', overfit=False)
     # val_set = active_cityscapes.ActiveCityscapesImage(path=dataset_path, base_size=args.base_size,
     #                                                  crop_size=args.crop_size, split='val', init_set=args.seed_set, overfit=False)
     model = DeepLabAccuracyPredictor(num_classes=train_set.NUM_CLASSES, backbone='mobilenet',
@@ -93,11 +94,11 @@ def get_validation_mIoUs():
     model = model.cuda()
     dataloader = DataLoader(train_set, batch_size=1, shuffle=False, num_workers=0)
 
-    for step in [2, 6, 10, 14, 18, 23, 27, 31]:
-        checkpoint = torch.load(os.path.join(constants.RUNS, 'active_cityscapes_region',
-                                             'eval_17-accuracy_prediction-scratch_ep200-abs_125-deeplab-mobilenet-bs_5-513x513-lr_0.01', 'run_%04d' % step, 'best.pth.tar'))
+    for step in [3, 8, 12, 16, 20, 24, 28, 32, 36, 40]:  # [2, 6, 10, 14, 18, 23, 27, 31]:
+        checkpoint = torch.load(os.path.join(constants.RUNS, 'active_pascal_region',
+                                             'evalpa_17-region_accuracy_prediction_ep150-abs_60-deeplab-mobilenet-bs_5-512x512-lr_0.007', 'run_%04d' % step, 'best.pth.tar'))
         model.module.load_state_dict(checkpoint['state_dict'])
-        validation(model, dataloader, args, step)
+        validation(model, dataloader, args, step, train_set.NUM_CLASSES)
 
 
 def test_entropy_map_for_images():
@@ -262,7 +263,6 @@ def test_nms_on_entropy_maps():
 
     active_selector = ActiveSelectionMCDropout(train_set.NUM_CLASSES, train_set.env, args.crop_size, args.batch_size)
     print(active_selector.create_region_maps(model, train_set.current_image_paths[:12], 127, 4)[0])
-
 
 
 def test_create_region_maps_with_region_cityscapes():
@@ -1522,7 +1522,7 @@ if __name__ == '__main__':
     # test_visualize_feature_space()
     # test_core_set()
     # test_kcenter()
-    test_ceal()
+    # test_ceal()
     # test_max_set_cover()
     # test_region_features()
     # test_image_features()
@@ -1539,4 +1539,4 @@ if __name__ == '__main__':
     # test_inaccuracy_heatmaps()
     # test_create_inaccuracy_maps_with_region_cityscapes()
     # draw_predictions_acc_sel()
-    # get_validation_mIoUs()
+    get_validation_mIoUs()
