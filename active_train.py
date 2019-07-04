@@ -252,7 +252,7 @@ def main():
     parser.add_argument('--gpu-ids', type=str, default='0',
                         help='use which gpu to train, must be a \
 						comma-separated list of integers only (default=0)')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
+    parser.add_argument('--seed', type=int, default=-1, metavar='S',
                         help='random seed (default: 1)')
     # checking point
     parser.add_argument('--resume', type=int, default=0,
@@ -337,6 +337,9 @@ def main():
     print(args)
 
     # manual seeding
+    if args.seed == -1:
+        args.seed  = int(random.random() * 2000)
+    print('Using random seed = ', args.seed)
     torch.manual_seed(args.seed)
 
     kwargs = {'pin_memory': False, 'init_set': args.seed_set, 'memory_hog': args.memory_hog}
